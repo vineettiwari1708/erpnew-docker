@@ -1,0 +1,500 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+//  ENUMS
+// ============================================================
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum PlanType {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+// PENDING → APPROVED → PAID  (OVERDUE is set by a cron job)
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// Admin creates payment record once client pays offline
+// PENDING = proof submitted, awaiting review
+// SUCCESS = admin confirmed
+// REJECTED = admin rejected proof
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  REJECTED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CARD
+  CHEQUE
+}
+
+enum LedgerType {
+  CREDIT
+  DEBIT
+}
+
+// ============================================================
+//  SYSTEM USER  (super admin — not tenant-scoped)
+// ============================================================
+
+model SystemUser {
+  id           String  @id @default(cuid())
+  name         String
+  email        String  @unique
+  passwordHash String
+  isSuperAdmin Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+//  TENANT  (one row per company / organisation)
+// ============================================================
+
+model Tenant {
+  id     String       @id @default(cuid())
+  name   String
+  slug   String?      @unique  // URL-friendly, e.g. "urbanfeat-erp"
+  email  String?      @unique
+  phone  String?
+  status TenantStatus @default(ACTIVE)
+  plan   PlanType     @default(FREE)
+
+  // GST
+  gstNumber  String?
+  gstEnabled Boolean @default(false)
+  gstType    String?
+  gstRate    Float?
+
+  // Profile
+  industry    String?
+  website     String?
+  employees   Int?
+  description String?
+  address     Json?   // { line1, city, state, country, pincode }
+  logoUrl     String?
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  roles         Role[]
+  clients       Client[]
+  projects      Project[]
+  invoices      Invoice[]
+  payments      Payment[]
+  ledger        Ledger[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+// ============================================================
+//  USER  (tenant employees: ADMIN | MANAGER | ACCOUNT | CLIENT)
+// ============================================================
+
+model User {
+  id       String     @id @default(cuid())
+  tenantId String
+  roleId   String?
+  clientId String?    // only set when role = CLIENT → linked Client record
+
+  userNumber   String?    // e.g. USR-0042
+  name         String
+  username     String?
+  email        String
+  passwordHash String
+  phone        String?
+  department   String?
+  avatarUrl    String?
+  address      Json?   // { line1, city, state, country, pincode }
+  status       UserStatus @default(ACTIVE)
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  role   Role?   @relation(fields: [roleId], references: [id])
+  client Client? @relation("ClientUsers", fields: [clientId], references: [id])
+
+  userPermissions   UserPermission[]
+  refreshTokens     RefreshToken[]
+  submittedPayments Payment[] @relation("PaymentSubmittedBy")
+  confirmedPayments Payment[] @relation("PaymentConfirmedBy")
+  ledgerEntries     Ledger[]  @relation("LedgerTriggeredBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+// ============================================================
+//  RBAC — Role → Permissions
+// ============================================================
+
+model Role {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String // ADMIN | MANAGER | ACCOUNT | CLIENT
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  users       User[]
+  permissions RolePermission[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Global permission keys (seeded once, shared across all tenants)
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique // e.g. INVOICE_APPROVE
+  description String?
+  module      String? // INVOICE | PAYMENT | CLIENT | USER | LEDGER | DASHBOARD
+
+  roles           RolePermission[]
+  userPermissions UserPermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// Per-user permission overrides (admin grants/revokes individual perms)
+model UserPermission {
+  userId       String
+  permissionId String
+  granted      Boolean @default(true) // false = explicitly denied
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+}
+
+// ============================================================
+//  CLIENT  (external company / person billed by tenant)
+// ============================================================
+
+model Client {
+  id       String       @id @default(cuid())
+  tenantId String
+
+  clientNumber String?   // e.g. CLT-MET-001
+  name         String
+  email        String?
+  phone        String?
+  company      String?   // legal company name (may differ from display name)
+  website      String?
+  gstNumber    String?
+  industry     String?
+  description  String?
+  address      Json?     // { line1, city, state, country, pincode }
+  status       ClientStatus @default(ACTIVE)
+
+  createdBy String?   // userId of the admin who created this client
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  // relations to child records
+  users    User[]    @relation("ClientUsers")  // CLIENT-role users linked to this client
+  projects Project[]
+  invoices Invoice[]
+  payments Payment[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+// ============================================================
+//  PROJECT
+// ============================================================
+
+model Project {
+  id               String        @id @default(cuid())
+  tenantId         String
+  clientId         String
+  projectManagerId String?       // userId of assigned manager
+
+  name        String
+  code        String?   // short code: WEB-2026-001
+  description String?
+
+  status   ProjectStatus @default(PLANNING)
+  priority String?       // LOW | MEDIUM | HIGH | URGENT
+  type     String?       // Web Development | Mobile App | etc.
+
+  budget Float @default(0)
+  spent  Float @default(0)
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  client   Client    @relation(fields: [clientId], references: [id])
+  invoices Invoice[]
+
+  @@index([tenantId])
+  @@index([clientId])
+}
+
+// ============================================================
+//  INVOICE   flow: DRAFT → PENDING → APPROVED → PAID
+// ============================================================
+
+model Invoice {
+  id        String  @id @default(cuid())
+  tenantId  String
+  clientId  String
+  projectId String?
+
+  invoiceNumber String?   // e.g. INV-2026-0001 (set on creation)
+  title         String?
+
+  amount      Float         // base amount before tax/discount
+  tax         Float @default(0)
+  discount    Float @default(0)
+  totalAmount Float         // amount + tax - discount  (stored for fast reads)
+
+  status    InvoiceStatus @default(PENDING)
+  issueDate DateTime?
+  dueDate   DateTime?
+  notes     String?
+
+  createdBy  String?
+  approvedBy String?
+  approvedAt DateTime?
+  paidAt     DateTime?
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  client  Client   @relation(fields: [clientId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+
+  items    InvoiceItem[]
+  payments Payment[]
+  ledger   Ledger[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([tenantId, status])
+}
+
+// Line items on an invoice (optional — invoice can be single-amount too)
+model InvoiceItem {
+  id        String @id @default(cuid())
+  invoiceId String
+
+  name        String
+  description String?
+  quantity    Float  @default(1)
+  rate        Float
+  total       Float  // quantity × rate
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+// ============================================================
+//  PAYMENT   (created by admin once offline payment is confirmed)
+// ============================================================
+
+model Payment {
+  id            String  @id @default(cuid())
+  tenantId      String
+  invoiceId     String
+  clientId      String?
+  submittedById String? // userId who submitted the proof (CLIENT role or admin)
+  confirmedById String? // userId who approved/rejected (admin/manager)
+
+  paymentNumber String?   // e.g. PAY-MET-001
+  amount        Float
+  status        PaymentStatus @default(PENDING)
+  method        PaymentMethod
+  transactionId String?
+  proofUrl      String?
+  notes         String?
+
+  paidAt      DateTime?
+  confirmedAt DateTime?
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  client      Client?  @relation(fields: [clientId], references: [id])
+  submittedBy User?    @relation("PaymentSubmittedBy", fields: [submittedById], references: [id])
+  confirmedBy User?    @relation("PaymentConfirmedBy", fields: [confirmedById], references: [id])
+
+  ledger Ledger[]
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([clientId])
+}
+
+// ============================================================
+//  LEDGER   (read-only from UI — auto-created on payment confirm)
+// ============================================================
+
+model Ledger {
+  id        String     @id @default(cuid())
+  tenantId  String
+  userId    String?    // who triggered this entry
+  invoiceId String?    // source invoice
+  paymentId String?    // source payment
+
+  type        LedgerType
+  amount      Float
+  description String?
+  source      String     // INVOICE_PAYMENT | REFUND | EXPENSE | ADJUSTMENT
+  referenceId String?    // generic extra reference (not a FK)
+
+  createdAt DateTime @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  user    User?    @relation("LedgerTriggeredBy", fields: [userId], references: [id])
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([tenantId])
+}
+
+// ============================================================
+//  NOTIFICATION
+// ============================================================
+
+model Notification {
+  id       String  @id @default(cuid())
+  tenantId String
+  userId   String? // null = broadcast to all users in tenant
+
+  title   String
+  message String
+  type    String? // INFO | SUCCESS | WARNING | ERROR
+  read    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+// ============================================================
+//  AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id       String  @id @default(cuid())
+  tenantId String? // null for system-level actions
+  userId   String? // null for automated/system actions
+
+  action   String  // CREATE | UPDATE | DELETE | APPROVE | CONFIRM_PAYMENT
+  entity   String  // Invoice | Payment | Client | User | etc.
+  entityId String?
+  before   Json?
+  after    Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([entity, entityId])
+}
+
+// ============================================================
+//  REFRESH TOKEN  (JWT rotation)
+// ============================================================
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

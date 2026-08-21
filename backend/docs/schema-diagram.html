@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Urbanfeat ERP — Database Schema</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: white;
+      padding: 32px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+    .header p  { font-size: 13px; opacity: 0.8; margin-top: 4px; }
+    .badge {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* ── PRINT BUTTON ── */
+    .toolbar {
+      padding: 16px 48px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: white;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #4f46e5; color: white; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-outline { background: white; color: #475569; border: 1px solid #e2e8f0; }
+    .btn-outline:hover { background: #f8fafc; }
+    .toolbar-hint { font-size: 12px; color: #94a3b8; }
+
+    /* ── MAIN LAYOUT ── */
+    .container { padding: 40px 48px; }
+
+    /* ── STATS STRIP ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .stat-card .num { font-size: 28px; font-weight: 800; }
+    .stat-card .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .stat-card.blue  .num { color: #3b82f6; }
+    .stat-card.violet .num { color: #7c3aed; }
+    .stat-card.green  .num { color: #10b981; }
+    .stat-card.orange .num { color: #f59e0b; }
+    .stat-card.pink   .num { color: #ec4899; }
+
+    /* ── SECTION TITLE ── */
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e2e8f0;
+    }
+
+    /* ── ER DIAGRAM ── */
+    .diagram-wrap {
+      background: white;
+      border-radius: 16px;
+      border: 1px solid #e2e8f0;
+      padding: 32px;
+      margin-bottom: 40px;
+      overflow-x: auto;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .mermaid { min-width: 900px; }
+
+    /* ── TABLE CARDS ── */
+    .tables-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    .table-card {
+      background: white;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .table-card .card-head {
+      padding: 14px 18px;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: white;
+    }
+    .table-card .card-head .icon {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+    }
+    .table-card .card-head .row-count {
+      margin-left: auto;
+      background: rgba(255,255,255,0.2);
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* colour themes */
+    .t-violet  .card-head { background: linear-gradient(135deg,#4f46e5,#7c3aed); }
+    .t-blue    .card-head { background: linear-gradient(135deg,#2563eb,#3b82f6); }
+    .t-green   .card-head { background: linear-gradient(135deg,#059669,#10b981); }
+    .t-amber   .card-head { background: linear-gradient(135deg,#d97706,#f59e0b); }
+    .t-rose    .card-head { background: linear-gradient(135deg,#dc2626,#f43f5e); }
+    .t-cyan    .card-head { background: linear-gradient(135deg,#0891b2,#06b6d4); }
+    .t-slate   .card-head { background: linear-gradient(135deg,#475569,#64748b); }
+    .t-pink    .card-head { background: linear-gradient(135deg,#be185d,#ec4899); }
+    .t-teal    .card-head { background: linear-gradient(135deg,#0f766e,#14b8a6); }
+    .t-orange  .card-head { background: linear-gradient(135deg,#ea580c,#f97316); }
+    .t-indigo  .card-head { background: linear-gradient(135deg,#4338ca,#6366f1); }
+    .t-gray    .card-head { background: linear-gradient(135deg,#374151,#6b7280); }
+
+    .col-list { padding: 4px 0; }
+    .col-row {
+      display: flex;
+      align-items: center;
+      padding: 7px 18px;
+      font-size: 12.5px;
+      border-bottom: 1px solid #f1f5f9;
+      gap: 8px;
+    }
+    .col-row:last-child { border-bottom: none; }
+    .col-row:hover { background: #f8fafc; }
+
+    .col-name { font-family: 'Consolas', monospace; color: #1e293b; flex: 1; font-weight: 600; }
+    .col-type { font-family: 'Consolas', monospace; color: #6366f1; font-size: 11.5px; }
+    .tag {
+      font-size: 10px; font-weight: 700; border-radius: 4px;
+      padding: 2px 6px; letter-spacing: 0.3px;
+    }
+    .tag-pk  { background: #fef3c7; color: #92400e; }
+    .tag-fk  { background: #dbeafe; color: #1d4ed8; }
+    .tag-uk  { background: #d1fae5; color: #065f46; }
+    .tag-null { background: #f1f5f9; color: #94a3b8; }
+
+    /* ── RELATIONSHIPS TABLE ── */
+    .rel-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+      margin-bottom: 40px;
+    }
+    .rel-table th {
+      background: #f8fafc;
+      padding: 12px 20px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .rel-table td {
+      padding: 11px 20px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+    }
+    .rel-table tr:last-child td { border-bottom: none; }
+    .rel-table tr:hover td { background: #f8fafc; }
+    .tname {
+      font-family: 'Consolas', monospace;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .tname.from { color: #4f46e5; }
+    .tname.to   { color: #059669; }
+    .rel-arrow  { color: #94a3b8; font-size: 16px; }
+    .rel-type   { font-size: 11px; background: #f1f5f9; color: #475569; border-radius: 4px; padding: 2px 8px; font-weight: 600; }
+
+    /* ── ENUMS ── */
+    .enums-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .enum-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .enum-head {
+      background: #1e293b;
+      color: white;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: 'Consolas', monospace;
+    }
+    .enum-vals { padding: 8px 0; }
+    .enum-val {
+      padding: 6px 16px;
+      font-size: 12px;
+      font-family: 'Consolas', monospace;
+      color: #6366f1;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .enum-val:last-child { border-bottom: none; }
+    .enum-val::before { content: '·  '; color: #94a3b8; }
+
+    /* ── FOOTER ── */
+    .footer {
+      background: #1e293b;
+      color: #94a3b8;
+      text-align: center;
+      padding: 20px;
+      font-size: 12px;
+    }
+    .footer strong { color: white; }
+
+    /* ── PRINT ── */
+    @media print {
+      .toolbar, .btn { display: none !important; }
+      body { background: white; }
+      .container { padding: 20px; }
+      .header { padding: 20px 24px; }
+      .tables-grid { grid-template-columns: repeat(2, 1fr); }
+      .enums-grid  { grid-template-columns: repeat(3, 1fr); }
+      .diagram-wrap { page-break-after: always; }
+      .table-card, .enum-card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <h1>🏗 Urbanfeat ERP — Database Schema</h1>
+    <p>Multi-Tenant SaaS · PostgreSQL · Prisma ORM · Generated 2026-07-02</p>
+  </div>
+  <span class="badge">v1.0 · init migration</span>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <button class="btn btn-primary" onclick="window.print()">
+    🖨 Print / Save as PDF
+  </button>
+  <button class="btn btn-outline" onclick="document.getElementById('er').scrollIntoView({behavior:'smooth'})">
+    📊 Jump to ER Diagram
+  </button>
+  <button class="btn btn-outline" onclick="document.getElementById('tables').scrollIntoView({behavior:'smooth'})">
+    📋 Jump to Tables
+  </button>
+  <span class="toolbar-hint">Ctrl+P → Save as PDF  |  Or use the button above</span>
+</div>
+
+<div class="container">
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat-card blue">
+      <div class="num">16</div>
+      <div class="lbl">Tables</div>
+    </div>
+    <div class="stat-card violet">
+      <div class="num">9</div>
+      <div class="lbl">Enums</div>
+    </div>
+    <div class="stat-card green">
+      <div class="num">27</div>
+      <div class="lbl">Foreign Keys</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="num">22</div>
+      <div class="lbl">Indexes</div>
+    </div>
+    <div class="stat-card pink">
+      <div class="num">5</div>
+      <div class="lbl">Soft-Delete Tables</div>
+    </div>
+  </div>
+
+  <!-- ER DIAGRAM -->
+  <div class="section-title" id="er">📊 Entity Relationship Diagram</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+erDiagram
+    Tenant {
+        text id PK
+        text name
+        text email UK
+        TenantStatus status
+        PlanType plan
+        text gstNumber
+        boolean gstEnabled
+        text gstType
+        float gstRate
+        text industry
+        jsonb address
+    }
+    SystemUser {
+        text id PK
+        text name
+        text email UK
+        text passwordHash
+        boolean isSuperAdmin
+    }
+    User {
+        text id PK
+        text tenantId FK
+        text roleId FK
+        text clientId FK
+        text name
+        text email
+        text passwordHash
+        text phone
+        text department
+        UserStatus status
+        boolean isDeleted
+    }
+    Role {
+        text id PK
+        text tenantId FK
+        text name
+    }
+    Permission {
+        text id PK
+        text key UK
+        text module
+        text description
+    }
+    RolePermission {
+        text roleId FK
+        text permissionId FK
+    }
+    UserPermission {
+        text userId FK
+        text permissionId FK
+        boolean granted
+    }
+    Client {
+        text id PK
+        text tenantId FK
+        text name
+        text email
+        text company
+        text gstNumber
+        jsonb address
+        ClientStatus status
+        boolean isDeleted
+    }
+    Project {
+        text id PK
+        text tenantId FK
+        text clientId FK
+        text projectManagerId
+        text name
+        text code
+        ProjectStatus status
+        float budget
+        float spent
+    }
+    Invoice {
+        text id PK
+        text tenantId FK
+        text clientId FK
+        text projectId FK
+        text invoiceNumber
+        float amount
+        float tax
+        float discount
+        float totalAmount
+        InvoiceStatus status
+        timestamp dueDate
+        boolean isDeleted
+    }
+    InvoiceItem {
+        text id PK
+        text invoiceId FK
+        text name
+        float quantity
+        float rate
+        float total
+    }
+    Payment {
+        text id PK
+        text tenantId FK
+        text invoiceId FK
+        text clientId FK
+        text submittedById FK
+        text confirmedById FK
+        float amount
+        PaymentStatus status
+        PaymentMethod method
+        timestamp paidAt
+        boolean isDeleted
+    }
+    Ledger {
+        text id PK
+        text tenantId FK
+        text userId FK
+        text invoiceId FK
+        text paymentId FK
+        LedgerType type
+        float amount
+        text source
+    }
+    Notification {
+        text id PK
+        text tenantId FK
+        text userId
+        text title
+        text message
+        boolean read
+    }
+    AuditLog {
+        text id PK
+        text tenantId FK
+        text userId
+        text action
+        text entity
+        text entityId
+        jsonb before
+        jsonb after
+    }
+    RefreshToken {
+        text id PK
+        text userId FK
+        text token UK
+        timestamp expiresAt
+    }
+
+    Tenant ||--o{ User : "has"
+    Tenant ||--o{ Role : "defines"
+    Tenant ||--o{ Client : "owns"
+    Tenant ||--o{ Project : "owns"
+    Tenant ||--o{ Invoice : "issues"
+    Tenant ||--o{ Payment : "receives"
+    Tenant ||--o{ Ledger : "records"
+    Tenant ||--o{ Notification : "sends"
+    Tenant ||--o{ AuditLog : "logs"
+    Role ||--o{ User : "assigned to"
+    Role ||--o{ RolePermission : "has"
+    Permission ||--o{ RolePermission : "mapped to"
+    Permission ||--o{ UserPermission : "overridden by"
+    User ||--o{ UserPermission : "overrides"
+    User ||--o{ RefreshToken : "owns"
+    Client ||--o{ User : "linked portal users"
+    Client ||--o{ Project : "has"
+    Client ||--o{ Invoice : "billed"
+    Client ||--o{ Payment : "makes"
+    Project ||--o{ Invoice : "generates"
+    Invoice ||--o{ InvoiceItem : "contains"
+    Invoice ||--o{ Payment : "settled by"
+    Invoice ||--o{ Ledger : "referenced"
+    Payment ||--o{ Ledger : "creates"
+    </div>
+  </div>
+
+  <!-- TABLE CARDS -->
+  <div class="section-title" id="tables">📋 Table Definitions</div>
+  <div class="tables-grid">
+
+    <!-- SystemUser -->
+    <div class="table-card t-gray">
+      <div class="card-head">
+        <div class="icon">👤</div>
+        SystemUser
+        <span class="row-count">Super Admin</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">email</span><span class="tag tag-uk">UK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">passwordHash</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">isSuperAdmin</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- Tenant -->
+    <div class="table-card t-violet">
+      <div class="card-head">
+        <div class="icon">🏢</div>
+        Tenant
+        <span class="row-count">+ soft-delete</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">email</span><span class="tag tag-uk">UK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">phone</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">status</span><span class="col-type">TenantStatus</span></div>
+        <div class="col-row"><span class="col-name">plan</span><span class="col-type">PlanType</span></div>
+        <div class="col-row"><span class="col-name">gstNumber</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">gstEnabled</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">gstType</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">gstRate</span><span class="tag tag-null">?</span><span class="col-type">FLOAT</span></div>
+        <div class="col-row"><span class="col-name">industry</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">website</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">employees</span><span class="tag tag-null">?</span><span class="col-type">INT</span></div>
+        <div class="col-row"><span class="col-name">address</span><span class="tag tag-null">?</span><span class="col-type">JSONB</span></div>
+        <div class="col-row"><span class="col-name">logoUrl</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">isDeleted</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">deletedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- User -->
+    <div class="table-card t-blue">
+      <div class="card-head">
+        <div class="icon">👥</div>
+        User
+        <span class="row-count">+ soft-delete</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">roleId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Role</span></div>
+        <div class="col-row"><span class="col-name">clientId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Client</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">username</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">email</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">passwordHash</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">phone</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">department</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">avatarUrl</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">address</span><span class="tag tag-null">?</span><span class="col-type">JSONB</span></div>
+        <div class="col-row"><span class="col-name">status</span><span class="col-type">UserStatus</span></div>
+        <div class="col-row"><span class="col-name">isDeleted</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">deletedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- Role -->
+    <div class="table-card t-indigo">
+      <div class="card-head">
+        <div class="icon">🛡</div>
+        Role
+        <span class="row-count">RBAC</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT (ADMIN/MANAGER/ACCOUNT/CLIENT)</span></div>
+      </div>
+    </div>
+
+    <!-- Permission -->
+    <div class="table-card t-indigo">
+      <div class="card-head">
+        <div class="icon">🔑</div>
+        Permission
+        <span class="row-count">Global · 29 keys</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">key</span><span class="tag tag-uk">UK</span><span class="col-type">TEXT (e.g. INVOICE_APPROVE)</span></div>
+        <div class="col-row"><span class="col-name">description</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">module</span><span class="tag tag-null">?</span><span class="col-type">TEXT (INVOICE/PAYMENT/...)</span></div>
+      </div>
+    </div>
+
+    <!-- RolePermission -->
+    <div class="table-card t-indigo">
+      <div class="card-head">
+        <div class="icon">🔗</div>
+        RolePermission
+        <span class="row-count">Join table</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">roleId</span><span class="tag tag-pk">PK</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Role</span></div>
+        <div class="col-row"><span class="col-name">permissionId</span><span class="tag tag-pk">PK</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Permission</span></div>
+      </div>
+    </div>
+
+    <!-- UserPermission -->
+    <div class="table-card t-indigo">
+      <div class="card-head">
+        <div class="icon">⚙️</div>
+        UserPermission
+        <span class="row-count">Per-user override</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">userId</span><span class="tag tag-pk">PK</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → User</span></div>
+        <div class="col-row"><span class="col-name">permissionId</span><span class="tag tag-pk">PK</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Permission</span></div>
+        <div class="col-row"><span class="col-name">granted</span><span class="col-type">BOOLEAN (false = denied)</span></div>
+      </div>
+    </div>
+
+    <!-- Client -->
+    <div class="table-card t-green">
+      <div class="card-head">
+        <div class="icon">🏭</div>
+        Client
+        <span class="row-count">+ soft-delete</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">email</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">phone</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">company</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">website</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">gstNumber</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">industry</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">description</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">address</span><span class="tag tag-null">?</span><span class="col-type">JSONB</span></div>
+        <div class="col-row"><span class="col-name">status</span><span class="col-type">ClientStatus</span></div>
+        <div class="col-row"><span class="col-name">createdBy</span><span class="tag tag-null">?</span><span class="col-type">TEXT (userId)</span></div>
+        <div class="col-row"><span class="col-name">isDeleted</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">deletedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- Project -->
+    <div class="table-card t-cyan">
+      <div class="card-head">
+        <div class="icon">📁</div>
+        Project
+        <span class="row-count">Budget tracked</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">clientId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Client</span></div>
+        <div class="col-row"><span class="col-name">projectManagerId</span><span class="tag tag-null">?</span><span class="col-type">TEXT (userId)</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">code</span><span class="tag tag-null">?</span><span class="col-type">TEXT (WEB-2026-001)</span></div>
+        <div class="col-row"><span class="col-name">description</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">status</span><span class="col-type">ProjectStatus</span></div>
+        <div class="col-row"><span class="col-name">priority</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">type</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">budget</span><span class="col-type">FLOAT (default 0)</span></div>
+        <div class="col-row"><span class="col-name">spent</span><span class="col-type">FLOAT (default 0)</span></div>
+        <div class="col-row"><span class="col-name">startDate</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">endDate</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdBy</span><span class="tag tag-null">?</span><span class="col-type">TEXT (userId)</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- Invoice -->
+    <div class="table-card t-amber">
+      <div class="card-head">
+        <div class="icon">🧾</div>
+        Invoice
+        <span class="row-count">+ soft-delete</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">clientId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Client</span></div>
+        <div class="col-row"><span class="col-name">projectId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Project</span></div>
+        <div class="col-row"><span class="col-name">invoiceNumber</span><span class="tag tag-null">?</span><span class="col-type">TEXT (INV-2026-0001)</span></div>
+        <div class="col-row"><span class="col-name">title</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">amount</span><span class="col-type">FLOAT (base)</span></div>
+        <div class="col-row"><span class="col-name">tax</span><span class="col-type">FLOAT (default 0)</span></div>
+        <div class="col-row"><span class="col-name">discount</span><span class="col-type">FLOAT (default 0)</span></div>
+        <div class="col-row"><span class="col-name">totalAmount</span><span class="col-type">FLOAT (amount+tax−discount)</span></div>
+        <div class="col-row"><span class="col-name">status</span><span class="col-type">InvoiceStatus</span></div>
+        <div class="col-row"><span class="col-name">issueDate</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">dueDate</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">notes</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">createdBy</span><span class="tag tag-null">?</span><span class="col-type">TEXT (userId)</span></div>
+        <div class="col-row"><span class="col-name">approvedBy</span><span class="tag tag-null">?</span><span class="col-type">TEXT (userId)</span></div>
+        <div class="col-row"><span class="col-name">approvedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">paidAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">isDeleted</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">deletedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- InvoiceItem -->
+    <div class="table-card t-orange">
+      <div class="card-head">
+        <div class="icon">📝</div>
+        InvoiceItem
+        <span class="row-count">Cascade delete</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">invoiceId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Invoice</span></div>
+        <div class="col-row"><span class="col-name">name</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">description</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">quantity</span><span class="col-type">FLOAT (default 1)</span></div>
+        <div class="col-row"><span class="col-name">rate</span><span class="col-type">FLOAT</span></div>
+        <div class="col-row"><span class="col-name">total</span><span class="col-type">FLOAT (qty × rate)</span></div>
+      </div>
+    </div>
+
+    <!-- Payment -->
+    <div class="table-card t-green">
+      <div class="card-head">
+        <div class="icon">💳</div>
+        Payment
+        <span class="row-count">+ soft-delete</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">invoiceId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Invoice</span></div>
+        <div class="col-row"><span class="col-name">clientId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Client</span></div>
+        <div class="col-row"><span class="col-name">submittedById</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → User</span></div>
+        <div class="col-row"><span class="col-name">confirmedById</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → User</span></div>
+        <div class="col-row"><span class="col-name">amount</span><span class="col-type">FLOAT</span></div>
+        <div class="col-row"><span class="col-name">status</span><span class="col-type">PaymentStatus</span></div>
+        <div class="col-row"><span class="col-name">method</span><span class="col-type">PaymentMethod</span></div>
+        <div class="col-row"><span class="col-name">transactionId</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">proofUrl</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">notes</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">paidAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">confirmedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">isDeleted</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">deletedAt</span><span class="tag tag-null">?</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">updatedAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- Ledger -->
+    <div class="table-card t-teal">
+      <div class="card-head">
+        <div class="icon">📒</div>
+        Ledger
+        <span class="row-count">Read-only from UI</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">userId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → User</span></div>
+        <div class="col-row"><span class="col-name">invoiceId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Invoice</span></div>
+        <div class="col-row"><span class="col-name">paymentId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Payment</span></div>
+        <div class="col-row"><span class="col-name">type</span><span class="col-type">LedgerType (CREDIT/DEBIT)</span></div>
+        <div class="col-row"><span class="col-name">amount</span><span class="col-type">FLOAT</span></div>
+        <div class="col-row"><span class="col-name">description</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">source</span><span class="col-type">TEXT (INVOICE_PAYMENT...)</span></div>
+        <div class="col-row"><span class="col-name">referenceId</span><span class="tag tag-null">?</span><span class="col-type">TEXT (generic ref)</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="table-card t-pink">
+      <div class="card-head">
+        <div class="icon">🔔</div>
+        Notification
+        <span class="row-count">Tenant broadcast</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">userId</span><span class="tag tag-null">?</span><span class="col-type">TEXT (null = broadcast)</span></div>
+        <div class="col-row"><span class="col-name">title</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">message</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">type</span><span class="tag tag-null">?</span><span class="col-type">TEXT (INFO/SUCCESS/...)</span></div>
+        <div class="col-row"><span class="col-name">read</span><span class="col-type">BOOLEAN</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- AuditLog -->
+    <div class="table-card t-rose">
+      <div class="card-head">
+        <div class="icon">📜</div>
+        AuditLog
+        <span class="row-count">Immutable log</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">tenantId</span><span class="tag tag-fk">FK</span><span class="tag tag-null">?</span><span class="col-type">TEXT → Tenant</span></div>
+        <div class="col-row"><span class="col-name">userId</span><span class="tag tag-null">?</span><span class="col-type">TEXT (who did it)</span></div>
+        <div class="col-row"><span class="col-name">action</span><span class="col-type">TEXT (CREATE/UPDATE/DELETE)</span></div>
+        <div class="col-row"><span class="col-name">entity</span><span class="col-type">TEXT (Invoice/Payment/...)</span></div>
+        <div class="col-row"><span class="col-name">entityId</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">before</span><span class="tag tag-null">?</span><span class="col-type">JSONB</span></div>
+        <div class="col-row"><span class="col-name">after</span><span class="tag tag-null">?</span><span class="col-type">JSONB</span></div>
+        <div class="col-row"><span class="col-name">ipAddress</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">userAgent</span><span class="tag tag-null">?</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- RefreshToken -->
+    <div class="table-card t-slate">
+      <div class="card-head">
+        <div class="icon">🔐</div>
+        RefreshToken
+        <span class="row-count">JWT rotation</span>
+      </div>
+      <div class="col-list">
+        <div class="col-row"><span class="col-name">id</span><span class="tag tag-pk">PK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">userId</span><span class="tag tag-fk">FK</span><span class="col-type">TEXT → User (cascade)</span></div>
+        <div class="col-row"><span class="col-name">token</span><span class="tag tag-uk">UK</span><span class="col-type">TEXT</span></div>
+        <div class="col-row"><span class="col-name">expiresAt</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span class="col-name">createdAt</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ENUMS -->
+  <div class="section-title">🎨 Enum Types</div>
+  <div class="enums-grid">
+    <div class="enum-card">
+      <div class="enum-head">TenantStatus</div>
+      <div class="enum-vals">
+        <div class="enum-val">ACTIVE</div>
+        <div class="enum-val">INACTIVE</div>
+        <div class="enum-val">SUSPENDED</div>
+        <div class="enum-val">PENDING</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">PlanType</div>
+      <div class="enum-vals">
+        <div class="enum-val">FREE</div>
+        <div class="enum-val">PRO</div>
+        <div class="enum-val">ENTERPRISE</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">UserStatus</div>
+      <div class="enum-vals">
+        <div class="enum-val">ACTIVE</div>
+        <div class="enum-val">INACTIVE</div>
+        <div class="enum-val">SUSPENDED</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">ClientStatus</div>
+      <div class="enum-vals">
+        <div class="enum-val">ACTIVE</div>
+        <div class="enum-val">INACTIVE</div>
+        <div class="enum-val">SUSPENDED</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">ProjectStatus</div>
+      <div class="enum-vals">
+        <div class="enum-val">PLANNING</div>
+        <div class="enum-val">ACTIVE</div>
+        <div class="enum-val">ON_HOLD</div>
+        <div class="enum-val">COMPLETED</div>
+        <div class="enum-val">CANCELLED</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">InvoiceStatus  ← flow order</div>
+      <div class="enum-vals">
+        <div class="enum-val">DRAFT</div>
+        <div class="enum-val">PENDING  →</div>
+        <div class="enum-val">APPROVED  →</div>
+        <div class="enum-val">PAID  ✓</div>
+        <div class="enum-val">OVERDUE  (cron)</div>
+        <div class="enum-val">CANCELLED</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">PaymentStatus</div>
+      <div class="enum-vals">
+        <div class="enum-val">PENDING  (awaiting review)</div>
+        <div class="enum-val">SUCCESS  (admin confirmed)</div>
+        <div class="enum-val">REJECTED  (admin rejected)</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">PaymentMethod</div>
+      <div class="enum-vals">
+        <div class="enum-val">CASH</div>
+        <div class="enum-val">UPI</div>
+        <div class="enum-val">BANK_TRANSFER</div>
+        <div class="enum-val">CARD</div>
+        <div class="enum-val">CHEQUE</div>
+      </div>
+    </div>
+    <div class="enum-card">
+      <div class="enum-head">LedgerType</div>
+      <div class="enum-vals">
+        <div class="enum-val">CREDIT</div>
+        <div class="enum-val">DEBIT</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RELATIONSHIPS TABLE -->
+  <div class="section-title">🔗 Foreign Key Relationships</div>
+  <table class="rel-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>From Table · Column</th>
+        <th></th>
+        <th>To Table · Column</th>
+        <th>Cardinality</th>
+        <th>On Delete</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td><span class="tname from">User</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>2</td><td><span class="tname from">User</span>.roleId</td><td class="rel-arrow">→</td><td><span class="tname to">Role</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>3</td><td><span class="tname from">User</span>.clientId</td><td class="rel-arrow">→</td><td><span class="tname to">Client</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>4</td><td><span class="tname from">Role</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>5</td><td><span class="tname from">RolePermission</span>.roleId</td><td class="rel-arrow">→</td><td><span class="tname to">Role</span>.id</td><td><span class="rel-type">N:1</span></td><td>CASCADE</td></tr>
+      <tr><td>6</td><td><span class="tname from">RolePermission</span>.permissionId</td><td class="rel-arrow">→</td><td><span class="tname to">Permission</span>.id</td><td><span class="rel-type">N:1</span></td><td>CASCADE</td></tr>
+      <tr><td>7</td><td><span class="tname from">UserPermission</span>.userId</td><td class="rel-arrow">→</td><td><span class="tname to">User</span>.id</td><td><span class="rel-type">N:1</span></td><td>CASCADE</td></tr>
+      <tr><td>8</td><td><span class="tname from">UserPermission</span>.permissionId</td><td class="rel-arrow">→</td><td><span class="tname to">Permission</span>.id</td><td><span class="rel-type">N:1</span></td><td>CASCADE</td></tr>
+      <tr><td>9</td><td><span class="tname from">Client</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>10</td><td><span class="tname from">Project</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>11</td><td><span class="tname from">Project</span>.clientId</td><td class="rel-arrow">→</td><td><span class="tname to">Client</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>12</td><td><span class="tname from">Invoice</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>13</td><td><span class="tname from">Invoice</span>.clientId</td><td class="rel-arrow">→</td><td><span class="tname to">Client</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>14</td><td><span class="tname from">Invoice</span>.projectId</td><td class="rel-arrow">→</td><td><span class="tname to">Project</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>15</td><td><span class="tname from">InvoiceItem</span>.invoiceId</td><td class="rel-arrow">→</td><td><span class="tname to">Invoice</span>.id</td><td><span class="rel-type">N:1</span></td><td>CASCADE ⚡</td></tr>
+      <tr><td>16</td><td><span class="tname from">Payment</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>17</td><td><span class="tname from">Payment</span>.invoiceId</td><td class="rel-arrow">→</td><td><span class="tname to">Invoice</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>18</td><td><span class="tname from">Payment</span>.clientId</td><td class="rel-arrow">→</td><td><span class="tname to">Client</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>19</td><td><span class="tname from">Payment</span>.submittedById</td><td class="rel-arrow">→</td><td><span class="tname to">User</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>20</td><td><span class="tname from">Payment</span>.confirmedById</td><td class="rel-arrow">→</td><td><span class="tname to">User</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>21</td><td><span class="tname from">Ledger</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>22</td><td><span class="tname from">Ledger</span>.userId</td><td class="rel-arrow">→</td><td><span class="tname to">User</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>23</td><td><span class="tname from">Ledger</span>.invoiceId</td><td class="rel-arrow">→</td><td><span class="tname to">Invoice</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>24</td><td><span class="tname from">Ledger</span>.paymentId</td><td class="rel-arrow">→</td><td><span class="tname to">Payment</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>25</td><td><span class="tname from">Notification</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>RESTRICT</td></tr>
+      <tr><td>26</td><td><span class="tname from">AuditLog</span>.tenantId</td><td class="rel-arrow">→</td><td><span class="tname to">Tenant</span>.id</td><td><span class="rel-type">N:1</span></td><td>SET NULL</td></tr>
+      <tr><td>27</td><td><span class="tname from">RefreshToken</span>.userId</td><td class="rel-arrow">→</td><td><span class="tname to">User</span>.id</td><td><span class="rel-type">N:1</span></td><td>CASCADE ⚡</td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <strong>Urbanfeat ERP</strong> · Multi-Tenant SaaS · PostgreSQL + Prisma ORM · PERN Stack
+  &nbsp;|&nbsp; Migration: <strong>20260702054303_init</strong>
+  &nbsp;|&nbsp; Generated: <strong>2026-07-02</strong>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    er: { diagramPadding: 30, layoutDirection: 'TB', minEntityWidth: 100 },
+    themeVariables: {
+      primaryColor: '#4f46e5',
+      primaryTextColor: '#1e293b',
+      primaryBorderColor: '#6366f1',
+      lineColor: '#94a3b8',
+      secondaryColor: '#f1f5f9',
+      tertiaryColor: '#e0e7ff',
+    }
+  });
+</script>
+</body>
+</html>

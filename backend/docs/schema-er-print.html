@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Urbanfeat ERP — ER Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    /* ── A4 LANDSCAPE PAGE ── */
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 297mm;
+      height: 210mm;
+      background: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── PRINT BUTTON (hidden on print) ── */
+    .print-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      background: #4f46e5;
+      color: white;
+      font-size: 13px;
+    }
+    .print-bar button {
+      background: white;
+      color: #4f46e5;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .print-bar button:hover { background: #e0e7ff; }
+    .print-bar .hint { opacity: 0.75; font-size: 11px; }
+
+    @media print {
+      .print-bar { display: none !important; }
+      html, body { overflow: visible; }
+    }
+
+    /* ── PAGE WRAPPER ── */
+    .page {
+      width: 297mm;
+      height: 210mm;
+      padding: 6mm 8mm 5mm;
+      display: flex;
+      flex-direction: column;
+      /* push content below the fixed bar when on screen */
+      padding-top: calc(6mm + 38px);
+    }
+    @media print {
+      .page { padding-top: 6mm; }
+    }
+
+    /* ── HEADER STRIP ── */
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4mm;
+      border-bottom: 2px solid #4f46e5;
+      padding-bottom: 3mm;
+      flex-shrink: 0;
+    }
+    .page-header .left h1 {
+      font-size: 14pt;
+      font-weight: 800;
+      color: #1e293b;
+      letter-spacing: -0.3px;
+    }
+    .page-header .left p {
+      font-size: 8pt;
+      color: #64748b;
+      margin-top: 1px;
+    }
+    .page-header .right {
+      text-align: right;
+      font-size: 8pt;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .page-header .right strong { color: #4f46e5; }
+
+    /* ── LEGEND ── */
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 3mm;
+      flex-shrink: 0;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 7.5pt;
+      color: #475569;
+    }
+    .dot {
+      width: 9px; height: 9px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+    .dot-pk  { background: #fef3c7; border: 1px solid #f59e0b; }
+    .dot-fk  { background: #dbeafe; border: 1px solid #3b82f6; }
+    .dot-uk  { background: #dcfce7; border: 1px solid #22c55e; }
+    .dot-nil { background: #f1f5f9; border: 1px solid #cbd5e1; }
+
+    .sep { width: 1px; height: 14px; background: #e2e8f0; }
+
+    .rel-chip {
+      font-size: 7pt;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: #475569;
+      font-family: monospace;
+    }
+
+    /* ── DIAGRAM CONTAINER ── */
+    .diagram-container {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+
+    .mermaid {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Mermaid auto-scales — force SVG to fill container */
+    .mermaid svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 281mm;
+      max-height: 155mm;
+    }
+
+    /* ── FOOTER ── */
+    .page-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 3mm;
+      padding-top: 3mm;
+      border-top: 1px solid #e2e8f0;
+      font-size: 7pt;
+      color: #94a3b8;
+      flex-shrink: 0;
+    }
+    .page-footer strong { color: #4f46e5; }
+
+    /* ── TABLE COUNT BADGES ── */
+    .badges {
+      display: flex;
+      gap: 6px;
+    }
+    .badge {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-size: 7pt;
+      color: #475569;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<!-- SCREEN-ONLY PRINT BAR -->
+<div class="print-bar">
+  <button onclick="window.print()">🖨 Print / Save as PDF</button>
+  <span class="hint">Set paper to A4 · Landscape · Background graphics ON · Margins: None</span>
+</div>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="page-header">
+    <div class="left">
+      <h1>Urbanfeat ERP — Entity Relationship Diagram</h1>
+      <p>Multi-Tenant SaaS · PostgreSQL · Prisma ORM · PERN Stack</p>
+    </div>
+    <div class="right">
+      <div>Migration: <strong>20260702054303_init</strong></div>
+      <div>Generated: <strong>2026-07-02</strong></div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <span class="legend-item"><span class="dot dot-pk"></span> PK — Primary Key</span>
+    <span class="legend-item"><span class="dot dot-fk"></span> FK — Foreign Key</span>
+    <span class="legend-item"><span class="dot dot-uk"></span> UK — Unique</span>
+    <span class="legend-item"><span class="dot dot-nil"></span> ? — Nullable</span>
+    <span class="sep"></span>
+    <span class="legend-item"><span class="rel-chip">||--o{</span> One to Many</span>
+    <span class="legend-item"><span class="rel-chip">}o--||</span> Many to One</span>
+    <span class="legend-item"><span class="rel-chip">||--||</span> One to One</span>
+    <div style="margin-left:auto;" class="badges">
+      <span class="badge">15 Tables</span>
+      <span class="badge">9 Enums</span>
+      <span class="badge">27 FK Relations</span>
+      <span class="badge">22 Indexes</span>
+    </div>
+  </div>
+
+  <!-- ER DIAGRAM -->
+  <div class="diagram-container">
+    <div class="mermaid">
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#e0e7ff",
+    "primaryTextColor": "#1e293b",
+    "primaryBorderColor": "#6366f1",
+    "lineColor": "#6366f1",
+    "secondaryColor": "#f0fdf4",
+    "tertiaryColor": "#fff7ed",
+    "background": "#ffffff",
+    "mainBkg": "#e0e7ff",
+    "nodeBorder": "#6366f1",
+    "clusterBkg": "#f8fafc",
+    "titleColor": "#1e293b",
+    "edgeLabelBackground": "#ffffff",
+    "attributeBackgroundColorEven": "#f8fafc",
+    "attributeBackgroundColorOdd": "#ffffff"
+  },
+  "er": {
+    "diagramPadding": 12,
+    "layoutDirection": "TB",
+    "minEntityWidth": 80,
+    "minEntityHeight": 20,
+    "entityPadding": 10,
+    "useMaxWidth": true
+  }
+}}%%
+erDiagram
+
+    Tenant {
+        text id PK
+        text name
+        text email UK
+        enum status
+        enum plan
+        text gstNumber
+        float gstRate
+        jsonb address
+    }
+
+    SystemUser {
+        text id PK
+        text name
+        text email UK
+        text passwordHash
+        bool isSuperAdmin
+    }
+
+    User {
+        text id PK
+        text tenantId FK
+        text roleId FK
+        text clientId FK
+        text name
+        text email
+        text passwordHash
+        text phone
+        enum status
+    }
+
+    Role {
+        text id PK
+        text tenantId FK
+        text name
+    }
+
+    Permission {
+        text id PK
+        text key UK
+        text module
+    }
+
+    RolePermission {
+        text roleId FK
+        text permissionId FK
+    }
+
+    UserPermission {
+        text userId FK
+        text permissionId FK
+        bool granted
+    }
+
+    Client {
+        text id PK
+        text tenantId FK
+        text name
+        text email
+        text company
+        text gstNumber
+        enum status
+    }
+
+    Project {
+        text id PK
+        text tenantId FK
+        text clientId FK
+        text name
+        enum status
+        float budget
+        float spent
+    }
+
+    Invoice {
+        text id PK
+        text tenantId FK
+        text clientId FK
+        text projectId FK
+        text invoiceNumber
+        float amount
+        float totalAmount
+        enum status
+        date dueDate
+    }
+
+    InvoiceItem {
+        text id PK
+        text invoiceId FK
+        text name
+        float quantity
+        float rate
+        float total
+    }
+
+    Payment {
+        text id PK
+        text tenantId FK
+        text invoiceId FK
+        text clientId FK
+        text submittedById FK
+        text confirmedById FK
+        float amount
+        enum status
+        enum method
+        date paidAt
+    }
+
+    Ledger {
+        text id PK
+        text tenantId FK
+        text userId FK
+        text invoiceId FK
+        text paymentId FK
+        enum type
+        float amount
+        text source
+    }
+
+    Notification {
+        text id PK
+        text tenantId FK
+        text userId
+        text title
+        text message
+        bool read
+    }
+
+    AuditLog {
+        text id PK
+        text tenantId FK
+        text userId
+        text action
+        text entity
+        jsonb before
+        jsonb after
+    }
+
+    RefreshToken {
+        text id PK
+        text userId FK
+        text token UK
+        date expiresAt
+    }
+
+    Tenant       ||--o{ User         : "has"
+    Tenant       ||--o{ Role         : "defines"
+    Tenant       ||--o{ Client       : "owns"
+    Tenant       ||--o{ Project      : "owns"
+    Tenant       ||--o{ Invoice      : "issues"
+    Tenant       ||--o{ Payment      : "receives"
+    Tenant       ||--o{ Ledger       : "records"
+    Tenant       ||--o{ Notification : "sends"
+    Tenant       ||--o{ AuditLog     : "logs"
+
+    Role         ||--o{ User             : "assigned"
+    Role         ||--o{ RolePermission   : "grants"
+    Permission   ||--o{ RolePermission   : "in"
+    Permission   ||--o{ UserPermission   : "overrides"
+    User         ||--o{ UserPermission   : "has"
+    User         ||--o{ RefreshToken     : "owns"
+
+    Client       ||--o{ User     : "portal users"
+    Client       ||--o{ Project  : "has"
+    Client       ||--o{ Invoice  : "billed"
+    Client       ||--o{ Payment  : "makes"
+
+    Project      ||--o{ Invoice  : "generates"
+
+    Invoice      ||--o{ InvoiceItem : "contains"
+    Invoice      ||--o{ Payment    : "settled by"
+    Invoice      ||--o{ Ledger     : "referenced"
+
+    Payment      ||--o{ Ledger : "creates entry"
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="page-footer">
+    <span>Urbanfeat ERP · Multi-Tenant SaaS · <strong>PostgreSQL + Prisma ORM</strong></span>
+    <span>Invoice flow: DRAFT → PENDING → <strong>APPROVED</strong> → PAID · Payment: PENDING → <strong>SUCCESS</strong> / REJECTED</span>
+    <span>Soft-delete on: Tenant · User · Client · Invoice · Payment</span>
+  </div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    securityLevel: 'loose',
+  });
+
+  // After render, scale SVG to fit its container exactly
+  mermaid.init(undefined, '.mermaid').then(() => {
+    fitDiagram();
+  }).catch(() => {
+    setTimeout(fitDiagram, 1000);
+  });
+
+  function fitDiagram() {
+    const svg = document.querySelector('.mermaid svg');
+    if (!svg) return;
+    const container = document.querySelector('.diagram-container');
+    if (!container) return;
+
+    // Remove fixed dimensions Mermaid sets so it can scale freely
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    svg.style.width  = '100%';
+    svg.style.height = '100%';
+
+    // Get the diagram's natural bounding box
+    const bb = svg.getBBox ? svg.getBBox() : null;
+    if (bb && bb.width > 0) {
+      svg.setAttribute('viewBox', `${bb.x - 5} ${bb.y - 5} ${bb.width + 10} ${bb.height + 10}`);
+    }
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  }
+
+  window.addEventListener('resize', fitDiagram);
+</script>
+
+</body>
+</html>
