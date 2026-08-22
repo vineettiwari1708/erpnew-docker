@@ -237,3 +237,13 @@ erpnew-docker/
 - **Queues:** BullMQ + Redis for async jobs (email, PDF generation)
 - **Rate limiting:** `express-rate-limit` at API level
 - **Logging:** Structured JSON via `winston`
+
+---
+
+## Author
+
+**Vineet Tiwari**
+- GitHub: [@vineettiwari1708](https://github.com/vineettiwari1708)
+- Email: vineettiwari1708@gmail.com
+
+Full-stack multi-tenant SaaS ERP — Node.js backend, React frontend, PostgreSQL with Prisma, containerised with Docker.
