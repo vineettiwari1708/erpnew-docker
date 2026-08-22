@@ -1,6 +1,8 @@
 # erpnew — Multi-Tenant SaaS ERP
 
-A multi-tenant Enterprise Resource Planning (ERP) platform built on Node.js, React, and PostgreSQL. Each tenant gets isolated data behind a shared backend, accessed via their own URL slug.
+A multi-tenant Enterprise Resource Planning platform built on Node.js, React, and PostgreSQL. Each tenant gets isolated data behind a shared backend, accessed via their own URL slug.
+
+Monitored by **ServerPilot** (`d:\Project\serverpilot`) — live CPU, RAM, disk, and container metrics visible at http://localhost:8082.
 
 ---
 
@@ -23,24 +25,36 @@ A multi-tenant Enterprise Resource Planning (ERP) platform built on Node.js, Rea
 
 | Container | Role | URL |
 |---|---|---|
-| `erpnew-frontend` | React SPA | http://localhost:3001 |
-| `erpnew-backend` | REST API | http://localhost:5001 |
-| `erpnew-db` | PostgreSQL | localhost:5432 |
-| `erpnew-redis` | Redis | internal only |
+| `erpnew-erpnew-frontend-1` | React SPA (Nginx) | http://localhost:3001 |
+| `erpnew-erpnew-backend-1` | REST API | http://localhost:5001 |
+| `erpnew-erpnew-db-1` | PostgreSQL | internal |
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Docker Desktop (Windows / Mac / Linux)
+- Docker Desktop
 - Docker Compose v2
 
-### Run
+### Build Images
 
 ```bash
 cd d:\Project\erpnew-docker
-docker compose up -d
+docker compose -f docker-compose.build.yml build
+```
+
+### Run
+
+The project is deployed and managed via **ServerPilot**. Once ServerPilot is running:
+
+1. Open http://localhost:8082 → **Applications → + New App**
+2. Point it to the compose file and deploy
+
+Or run directly via Docker if the images are already built:
+
+```bash
+docker compose -f docker-compose.build.yml up -d
 ```
 
 Frontend: **http://localhost:3001**  
@@ -49,35 +63,36 @@ API: **http://localhost:5001**
 ### Stop
 
 ```bash
-docker compose down
+docker compose -f docker-compose.build.yml down
 ```
 
 ---
 
 ## Login
 
-Credentials are configured via the backend `.env` file before first run (see Environment Variables below).
-
 | Role | URL |
 |---|---|
 | Super Admin | http://localhost:3001 |
 | Tenant User | http://localhost:3001/tenant/:slug |
 
+Credentials set in backend `.env` before first run.
+
 ---
 
 ## Multi-Tenant Architecture
 
-- **`SystemUser`** table — super admins only; can create and manage tenants
-- **`Tenant`** table — one row per company; each has a `slug` (e.g. `urbanfeat-construction`)
-- **`User`** table — tenant-level users; always scoped to exactly one tenant
+- **`SystemUser`** — super admins; can create and manage tenants
+- **`Tenant`** — one row per company; each has a unique `slug` (e.g. `urbanfeat-construction`)
+- **`User`** — tenant-scoped users; always belong to one tenant
 - Frontend routes: `/tenant/:slug/*` for tenant users; `/admin/*` for super admins
 - JWT tokens carry the tenant slug; all API calls are scoped to the authenticated tenant
+- All Prisma queries filtered by `tenantId` at the service layer
 
 ---
 
 ## Environment Variables
 
-Backend `.env` (at `d:\Project\erpnew-docker\backend\.env`):
+`d:\Project\erpnew-docker\backend\.env`:
 
 ```env
 DATABASE_URL="postgresql://erpnew:erpnew123@erpnew-db:5432/erpnew"
@@ -95,61 +110,89 @@ SUPER_ADMIN_PASSWORD="changeme"
 
 ```bash
 # Rebuild one service
-docker compose build backend
-docker compose build frontend
+docker compose -f docker-compose.build.yml build backend
+docker compose -f docker-compose.build.yml build frontend
 
-# Restart after rebuild
-docker compose up -d backend
-docker compose up -d frontend
+# Rebuild all
+docker compose -f docker-compose.build.yml build
 
-# Full rebuild
-docker compose up -d --build
+# Via CI/CD (GitHub Actions self-hosted runner)
+# Push to main → runner builds → ServerPilot webhook redeploys
 ```
+
+---
+
+## CI/CD Pipeline
+
+Defined in `.github/workflows/deploy.yml`. Triggered on push to `main`:
+
+1. GitHub Actions self-hosted runner picks up the job
+2. Builds `frontend` and `backend` images via `docker-compose.build.yml`
+3. Calls ServerPilot webhook → redeploys running containers
+
+No inbound ports needed — the runner polls GitHub.
 
 ---
 
 ## Re-seed the Database
 
 The backend seeds the super admin on startup if no `SystemUser` exists.  
-To force a re-seed (e.g. after credential changes in `.env`):
+To force re-seed after credential changes:
 
 ```bash
-docker compose down
-docker volume rm erpnew-docker_erpnew-db-data
-docker compose up -d
+docker compose -f docker-compose.build.yml down
+docker volume rm erpnew-build_erpnew-db-data
+docker compose -f docker-compose.build.yml up -d
 ```
 
-> **Warning:** This deletes all tenant data. Only do this in development.
+> **Warning:** Deletes all tenant data. Development only.
 
 ---
 
 ## Database Access
 
 ```bash
-# Connect to the database
 docker exec -it erpnew-erpnew-db-1 psql -U erpnew -d erpnew
 
-# Run a quick query
+# Quick query
 docker exec erpnew-erpnew-db-1 psql -U erpnew -d erpnew -c "SELECT email FROM \"SystemUser\";"
 ```
 
 ---
 
-## Taking a Database Backup
-
-Use **ServerPilot** (see `d:\Project\serverpilot`) to back up erpnew's database:
+## Database Backup via ServerPilot
 
 1. Start ServerPilot: `cd d:\Project\serverpilot && docker compose up -d`
-2. Open http://localhost:8082
-3. Go to **Backups → + Manual Backup**
-4. Type: `PostgreSQL via Docker`
-5. Target: `docker+postgres://erpnew:erpnew123@erpnew-erpnew-db-1/erpnew`
-6. Click **Run Backup**
+2. Open http://localhost:8082 → **Backups → + Manual Backup**
+3. Type: `PostgreSQL via Docker`
+4. Target: `docker+postgres://erpnew:erpnew123@erpnew-erpnew-db-1/erpnew`
+5. Click **Run Backup**
 
-Then retrieve the file:
+Retrieve the file:
+
 ```powershell
 docker exec sp-agent-local ls /opt/serverpilot/backups
 docker cp sp-agent-local:/opt/serverpilot/backups/<filename> .
+```
+
+---
+
+## ServerPilot Monitoring
+
+To make this ERP appear as a live server in ServerPilot:
+
+```powershell
+$r = Invoke-RestMethod -Method POST -Uri "http://localhost:8081/api/agent/register" `
+  -ContentType "application/json" `
+  -Body '{"name":"ERP New Docker","hostname":"erpnew-docker.local","ip":"127.0.0.1","agent_secret":"change-this-agent-secret-too"}'
+
+docker run -d --name sp-agent-erpnew `
+  -e CONTROL_URL=http://host.docker.internal:8081 `
+  -e AGENT_TOKEN=$($r.token) `
+  -e HEARTBEAT_INTERVAL=30000 `
+  -v /var/run/docker.sock:/var/run/docker.sock `
+  --restart unless-stopped `
+  serverpilot-agent:latest
 ```
 
 ---
@@ -160,38 +203,37 @@ docker cp sp-agent-local:/opt/serverpilot/backups/<filename> .
 erpnew-docker/
 ├── backend/
 │   ├── src/
-│   │   ├── server.js           # Entry point
+│   │   ├── server.js
 │   │   ├── routes/
 │   │   ├── middleware/
 │   │   └── services/
 │   ├── prisma/
-│   │   └── schema.prisma       # Database schema
+│   │   └── schema.prisma
 │   ├── .env
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── main.jsx
-│   │   ├── routes/routes.jsx   # Application router
-│   │   ├── features/           # Redux slices + feature components
+│   │   ├── routes/routes.jsx
+│   │   ├── features/
 │   │   │   ├── auth/
 │   │   │   ├── users/
 │   │   │   ├── tenants/
 │   │   │   └── ...
-│   │   ├── components/
-│   │   │   └── layouts/
-│   │   │       └── Header.jsx
+│   │   ├── components/layouts/
 │   │   └── store/
 │   └── Dockerfile
-└── docker-compose.yml
+├── .github/workflows/deploy.yml   # CI/CD pipeline
+└── docker-compose.build.yml       # Build-only compose file
 ```
 
 ---
 
 ## Key Design Notes
 
-- **Router:** Uses `createBrowserRouter` — the router definition lives in `frontend/src/routes/routes.jsx`
-- **Auth state:** `tenantSlug` is stored in Redux and `localStorage`; the `Header` uses `user?.tenantSlug` to determine navigation context
-- **Data isolation:** All Prisma queries are filtered by `tenantId` at the service layer
-- **Queues:** BullMQ + Redis handle async jobs (email, PDF generation, etc.)
-- **Rate limiting:** Applied at the API gateway level via `express-rate-limit`
-- **Logging:** Structured JSON logs via `winston`
+- **Router:** `createBrowserRouter` — defined in `frontend/src/routes/routes.jsx`
+- **Auth state:** `tenantSlug` stored in Redux and `localStorage`
+- **Data isolation:** All Prisma queries filtered by `tenantId` at service layer
+- **Queues:** BullMQ + Redis for async jobs (email, PDF generation)
+- **Rate limiting:** `express-rate-limit` at API level
+- **Logging:** Structured JSON via `winston`

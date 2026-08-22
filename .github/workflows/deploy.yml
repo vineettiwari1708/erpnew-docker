@@ -1,0 +1,28 @@
+name: Deploy ERP
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+
+      - name: Build frontend image
+        run: docker compose -f docker-compose.build.yml build frontend
+
+      - name: Build backend image
+        run: docker compose -f docker-compose.build.yml build backend
+
+      - name: Redeploy via ServerPilot webhook
+        run: |
+          $body = '{"serverId":"f79e5cc6-f4f2-4017-9ade-72a6f12c99eb"}'
+          Invoke-RestMethod -Method POST `
+            -Uri "http://localhost:8081/api/webhooks/deploy/f5d0a6cb-05f2-45d0-8874-1eb8ca892b5e" `
+            -ContentType "application/json" `
+            -Body $body
+        shell: powershell
