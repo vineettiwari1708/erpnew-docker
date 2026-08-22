@@ -36,7 +36,7 @@ function relativeTime(dateStr) {
 export default function Header({ setSidebarOpen }) {
   const { user } = useAuth();
   const { tenantId: urlTenantId } = useParams();
-  const tenantSlugOrId = urlTenantId ?? (tenantSlugOrId);
+  const tenantSlugOrId = urlTenantId ?? (user?.tenantSlug || user?.tenantId);
   const dispatch  = useDispatch();
   const navigate  = useNavigate();
   const [open, setOpen]                   = useState(false);

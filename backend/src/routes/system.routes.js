@@ -1,8 +1,15 @@
-const express = require("express");
-const bcrypt  = require("bcrypt");
-const prisma  = require("../config/db");
+const express    = require("express");
+const bcrypt     = require("bcrypt");
+const { spawn }  = require("child_process");
+const fs         = require("fs");
+const path       = require("path");
+const prisma     = require("../config/db");
 
+const BACKUP_DIR = "/app/backups";
 const router = express.Router();
+
+// Ensure backup directory exists
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 function superAdminOnly(req, res, next) {
   if (req.user?.role !== "super_admin")
@@ -150,6 +157,75 @@ router.get("/settings", superAdminOnly, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: "Failed to load settings", error: err.message });
   }
+});
+
+/* ── POST /api/system/backup — run pg_dump and save file ── */
+router.post("/backup", superAdminOnly, async (req, res) => {
+  try {
+    const dbUrl  = new URL(process.env.DATABASE_URL);
+    const host   = dbUrl.hostname;
+    const port   = dbUrl.port || "5432";
+    const user   = dbUrl.username;
+    const pass   = dbUrl.password;
+    const dbName = dbUrl.pathname.slice(1);
+
+    const ts       = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const filename = `backup-${ts}.sql`;
+    const filepath = path.join(BACKUP_DIR, filename);
+
+    await new Promise((resolve, reject) => {
+      const proc = spawn(
+        "pg_dump",
+        ["-h", host, "-p", port, "-U", user, "-d", dbName, "-f", filepath, "--no-password"],
+        { env: { ...process.env, PGPASSWORD: pass } }
+      );
+      proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`pg_dump exited with code ${code}`))));
+      proc.on("error", reject);
+    });
+
+    const stat = fs.statSync(filepath);
+    res.json({ filename, size: stat.size, createdAt: new Date().toISOString(), path: filepath });
+  } catch (err) {
+    res.status(500).json({ message: "Backup failed", error: err.message });
+  }
+});
+
+/* ── GET /api/system/backups — list backup files ── */
+router.get("/backups", superAdminOnly, (req, res) => {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return res.json([]);
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => {
+        const stat = fs.statSync(path.join(BACKUP_DIR, f));
+        return { filename: f, size: stat.size, createdAt: stat.mtime.toISOString() };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to list backups", error: err.message });
+  }
+});
+
+/* ── GET /api/system/backup/:filename — download a backup file ── */
+router.get("/backup/:filename", superAdminOnly, (req, res) => {
+  const filename = path.basename(req.params.filename); // prevent path traversal
+  const filepath = path.join(BACKUP_DIR, filename);
+  if (!fs.existsSync(filepath))
+    return res.status(404).json({ message: "Backup file not found" });
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Type", "application/octet-stream");
+  fs.createReadStream(filepath).pipe(res);
+});
+
+/* ── DELETE /api/system/backup/:filename — delete a backup file ── */
+router.delete("/backup/:filename", superAdminOnly, (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filepath = path.join(BACKUP_DIR, filename);
+  if (!fs.existsSync(filepath))
+    return res.status(404).json({ message: "Backup file not found" });
+  fs.unlinkSync(filepath);
+  res.json({ message: "Backup deleted" });
 });
 
 module.exports = router;

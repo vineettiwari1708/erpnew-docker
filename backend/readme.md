@@ -11,12 +11,13 @@ REST API for the Urbanfeat ERP SaaS platform. Built with Node.js, Express, Prism
 | Runtime | Node.js (CommonJS) |
 | Framework | Express 4 |
 | ORM | Prisma 5 |
-| Database | PostgreSQL |
+| Database | PostgreSQL 16 |
 | Auth | JWT (jsonwebtoken) + bcrypt |
+| Queue | BullMQ + Redis |
 | File Upload | Multer |
 | Security | Helmet, CORS, express-rate-limit |
-| Logging | Morgan |
-| Dev Server | Nodemon |
+| Logging | Winston |
+| Validation | Zod |
 
 ---
 
@@ -25,9 +26,9 @@ REST API for the Urbanfeat ERP SaaS platform. Built with Node.js, Express, Prism
 ```
 backend/
 ├── prisma/
-│   ├── schema.prisma       # 15 models, 9 enums
+│   ├── schema.prisma       # DB models (SystemUser, Tenant, User, Client, Invoice, …)
 │   ├── migrations/         # Auto-generated SQL migrations
-│   └── seed.js             # Seed data (tenants, roles, users, clients, invoices)
+│   └── seed.js             # Seeds super admin + sample tenant on first run
 │
 ├── src/
 │   ├── config/
@@ -40,7 +41,7 @@ backend/
 │   │   └── error.middleware.js     # Centralized error handler (registered last)
 │   │
 │   ├── routes/
-│   │   ├── auth.routes.js          # POST /api/auth/login
+│   │   ├── auth.routes.js          # POST /api/auth/login, POST /api/auth/super-login
 │   │   ├── dashboard.routes.js     # GET  /api/:tenantId/dashboard
 │   │   ├── user.routes.js          # CRUD /api/:tenantId/users
 │   │   ├── client.routes.js        # CRUD /api/:tenantId/clients
@@ -64,47 +65,40 @@ backend/
 
 ---
 
-## Getting Started
+## Running via Docker (recommended)
 
-### 1. Install dependencies
+The backend runs as part of the Docker Compose stack. From the project root:
 
 ```bash
-cd backend
-npm install
+docker compose up -d
 ```
 
-### 2. Configure environment
+API is available at **http://localhost:5001**
 
-Create or update `.env`:
+Rebuild after code changes:
+
+```bash
+docker compose build backend
+docker compose up -d backend
+```
+
+---
+
+## Environment Variables
+
+Set in `backend/.env` — picked up automatically by Docker Compose:
 
 ```env
-DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/saas_db"
-JWT_SECRET="your_secret_key_here"
+DATABASE_URL="postgresql://erpnew:erpnew123@erpnew-db:5432/erpnew"
+JWT_SECRET="your-jwt-secret"
 JWT_EXPIRES="7d"
-NODE_ENV="development"
+NODE_ENV="production"
+REDIS_URL="redis://erpnew-redis:6379"
+
+SUPER_ADMIN_NAME="Your Name"
+SUPER_ADMIN_EMAIL="admin@example.com"
+SUPER_ADMIN_PASSWORD="changeme"
 ```
-
-### 3. Run database migration
-
-```bash
-npx prisma migrate dev --name init
-```
-
-### 4. Seed sample data
-
-```bash
-npm run prisma:seed
-```
-
-Seeds: 2 tenants, 4 roles, 29 permissions, 4 users, 2 clients, 2 projects, 2 invoices, 1 payment, 1 ledger entry.
-
-### 5. Start dev server
-
-```bash
-npm run dev
-```
-
-Server runs at `http://localhost:5001`
 
 ---
 
@@ -114,14 +108,15 @@ Server runs at `http://localhost:5001`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/auth/login` | Login with email + password, returns JWT |
+| POST | `/api/auth/login` | Tenant user login — returns JWT |
+| POST | `/api/auth/super-login` | Super admin login — returns JWT |
 | GET | `/health` | Health check |
 
 ### Protected (requires `Authorization: Bearer <token>`)
 
-All protected routes are scoped to a tenant: `/api/:tenantId/...`
+All tenant routes are scoped: `/api/:tenantId/...`
 
-The `tenantId` in the URL must match the `tenantId` inside the JWT token.
+The `tenantId` in the URL must match the `tenantId` inside the JWT.
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -135,7 +130,7 @@ The `tenantId` in the URL must match the `tenantId` inside the JWT token.
 | GET/POST | `/api/:tenantId/invoices` | List / create invoices |
 | GET/PUT/DELETE | `/api/:tenantId/invoices/:id` | Get / update / soft-delete invoice |
 | PATCH | `/api/:tenantId/invoices/:id/approve` | Approve invoice (PENDING → APPROVED) |
-| POST | `/api/:tenantId/invoices/:id/confirm-payment` | Mark invoice PAID + auto-create payment + ledger entry |
+| POST | `/api/:tenantId/invoices/:id/confirm-payment` | Mark PAID + auto-create payment + ledger entry |
 | GET/POST | `/api/:tenantId/payments` | List / create payments (supports file upload) |
 | GET/PUT/DELETE | `/api/:tenantId/payments/:id` | Get / update / soft-delete payment |
 | GET | `/api/:tenantId/ledger` | List ledger entries (read-only) |
@@ -150,18 +145,21 @@ The `tenantId` in the URL must match the `tenantId` inside the JWT token.
 4. `authMiddleware` verifies the token and sets `req.user`
 5. `tenantMiddleware` ensures the URL `tenantId` matches the token's `tenantId`
 
+Super admin uses `POST /api/auth/super-login` — token contains `{ id, role: "SUPER_ADMIN" }` with no `tenantId`.
+
 ---
 
 ## Invoice Payment Flow
 
 ```
 DRAFT → PENDING → APPROVED → PAID
-                          ↘ OVERDUE (via cron)
+                           ↘ OVERDUE (via scheduled job)
 ```
 
 - **PENDING** — invoice created, awaiting approval
 - **APPROVED** — manager/admin approved it
-- **PAID** — payment confirmed via `POST /invoices/:id/confirm-payment` (atomic transaction: creates Payment record + marks Invoice PAID + creates Ledger entry)
+- **PAID** — payment confirmed via `POST /invoices/:id/confirm-payment`  
+  (atomic transaction: creates Payment + marks Invoice PAID + creates Ledger entry)
 
 ---
 
@@ -179,27 +177,18 @@ Payment proofs are uploaded via `multipart/form-data`.
 
 ## Database
 
-View and edit data using Prisma Studio:
-
 ```bash
-npm run prisma:studio
+# Connect directly
+docker exec -it erpnew-erpnew-db-1 psql -U erpnew -d erpnew
+
+# Run Prisma Studio (local dev only)
+npx prisma studio
 ```
 
-Opens at `http://localhost:5555`
-
----
-
-## Seeded Test Accounts
-
-| Email | Password | Role | Tenant |
-|---|---|---|---|
-| admin@acme.com | admin123 | ADMIN | tnt_001 (Acme) |
-| manager@acme.com | manager123 | MANAGER | tnt_001 (Acme) |
-| accounts@acme.com | accounts123 | ACCOUNT | tnt_001 (Acme) |
-| client@abc.com | client123 | CLIENT | tnt_001 (Acme) |
+Schema auto-migrates on container startup.
 
 ---
 
 ## Author
 
-Vineet Tiwari — vineettiwari1708@gmail.com
+Vineet Tiwari

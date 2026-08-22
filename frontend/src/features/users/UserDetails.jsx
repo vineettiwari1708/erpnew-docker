@@ -156,7 +156,7 @@ export default function UserDetails() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between rounded-xl bg-slate-50 p-3">
               <span>User ID</span>
-              <span className="font-semibold text-slate-700 truncate ml-2">{user.id}</span>
+              <span className="font-semibold text-slate-700 truncate ml-2">{user.userNumber || user.id.slice(0, 8)}</span>
             </div>
             <div className="flex justify-between rounded-xl bg-indigo-50 p-3">
               <span>Role</span>
@@ -170,7 +170,7 @@ export default function UserDetails() {
             </div>
             <div className="flex justify-between rounded-xl bg-yellow-50 p-3">
               <span>Tenant</span>
-              <span className="font-semibold text-yellow-700">{tenantId}</span>
+              <span className="font-semibold text-yellow-700">{user.tenant?.name || authUser?.tenantSlug || "—"}</span>
             </div>
           </div>
         </div>

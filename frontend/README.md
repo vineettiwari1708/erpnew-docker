@@ -21,7 +21,7 @@ Urbanfeat ERP lets companies (tenants) run their entire service workflow from on
 | Layer | Technology |
 |---|---|
 | Framework | React 18 + Vite |
-| Routing | React Router DOM v6 |
+| Routing | React Router DOM v6 (`createBrowserRouter`) |
 | State | Redux Toolkit + React Redux |
 | Styling | Tailwind CSS |
 | HTTP | Axios |
@@ -29,6 +29,7 @@ Urbanfeat ERP lets companies (tenants) run their entire service workflow from on
 | Charts | Recharts |
 | Icons | Lucide React |
 | Tables | TanStack React Table |
+| Notifications | react-hot-toast |
 
 ---
 
@@ -82,7 +83,7 @@ View role-to-permission mappings. Admin can see what each role can access.
 
 ### System (Super Admin only)
 - Manage all tenant companies
-- View per-tenant invoices
+- View per-tenant data
 - Create new tenants
 
 ---
@@ -91,10 +92,12 @@ View role-to-permission mappings. Admin can see what each role can access.
 
 ```
 src/
-├── assets/mockData/       # Local mock data (clients, invoices, payments, etc.)
-├── components/layout/     # Sidebar, Header, layout wrappers
-├── features/              # One folder per module (auth, clients, invoices, ...)
-│   ├── auth/
+├── components/
+│   └── layouts/
+│       ├── Header.jsx        # Top nav — tenant context from Redux auth state
+│       └── Sidebar.jsx       # Permission-gated navigation links
+├── features/                 # One folder per module
+│   ├── auth/                 # Login, auth slice, token handling
 │   ├── clients/
 │   ├── dashboard/
 │   ├── invoices/
@@ -102,37 +105,57 @@ src/
 │   ├── payments/
 │   ├── projects/
 │   ├── Roles/
-│   ├── system/            # Super admin panel
+│   ├── system/               # Super admin panel (tenants, system users)
 │   └── users/
-├── guards/                # RoleGuard, PermissionGuard route wrappers
-├── pdf/                   # Invoice and payment PDF templates
-├── services/api/          # API layer (currently mock, ready for real backend)
-├── store/                 # Redux store, auth slice, hooks
-└── utils/                 # Permission helpers, PDF generators
+│       └── UserDetails.jsx   # Shows userNumber + tenant name (not raw UUID)
+├── guards/                   # RoleGuard, PermissionGuard route wrappers
+├── pdf/                      # Invoice and payment PDF templates
+├── routes/
+│   └── routes.jsx            # Main router definition (createBrowserRouter)
+├── services/api/             # Axios API layer — calls backend at /api
+├── store/                    # Redux store, auth slice, typed hooks
+└── utils/                    # Permission helpers, formatters
 ```
 
 ---
 
-## Running Locally
+## Running via Docker (recommended)
+
+The frontend is built and served by nginx as part of the Docker Compose stack:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+docker compose up -d
 ```
 
-App runs at `http://localhost:5173`
+App is available at **http://localhost:3001**
+
+Rebuild after code changes:
+
+```bash
+docker compose build frontend
+docker compose up -d frontend
+```
+
+---
+
+## URL Structure
+
+| URL | Who uses it |
+|---|---|
+| `http://localhost:3001` | Super admin login + dashboard |
+| `http://localhost:3001/tenant/:slug` | Tenant user login |
+| `http://localhost:3001/tenant/:slug/*` | All tenant module pages |
+
+The tenant `slug` (e.g. `urbanfeat-construction`) comes from the `Tenant` record in the database and is stored in the Redux auth state after login.
 
 ---
 
 ## Backend
 
-The backend is a Node.js + Express + Prisma (PostgreSQL) API at `http://localhost:5001`.
-
-The frontend currently uses mock data. To connect to the real backend, replace the mock imports in `src/services/api/` with axios calls to the live API.
+API runs at **http://localhost:5001**. The frontend communicates via Axios with the `Authorization: Bearer <token>` header on all protected routes. See `backend/readme.md` for the full API reference.
 
 ---
 
 ## Author
 
-Vineet Tiwari — vineettiwari1708@gmail.com
+Vineet Tiwari
