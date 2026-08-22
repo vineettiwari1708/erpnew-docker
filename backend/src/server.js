@@ -23,6 +23,7 @@ const profileRoutes       = require("./routes/profile.routes");
 const auditlogRoutes      = require("./routes/auditlog.routes");
 const notificationRoutes  = require("./routes/notification.routes");
 const systemRoutes        = require("./routes/system.routes");
+const { metricsMiddleware, metricsEndpoint } = require("./middleware/metrics");
 
 const app = express();
 
@@ -36,6 +37,8 @@ app.use(cors({
 }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(express.json());
+app.use(metricsMiddleware);
+app.get("/metrics", metricsEndpoint);
 
 app.use("/api/auth", authRoutes);
 
