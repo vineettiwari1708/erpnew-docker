@@ -1,4 +1,4 @@
-﻿const express                      = require("express");
+const express                      = require("express");
 const prisma                       = require("../config/db");
 const { upload, uploadToImageKit } = require("../middleware/upload.middleware");
 const audit                        = require("../utils/audit");
@@ -260,7 +260,9 @@ router.post("/:id/confirm-payment", upload.single("proof"), async (req, res) => 
 
   const { tenantId, id } = req.params;
   const { method, transactionId, notes } = req.body;
-  const confirmedBy = req.user.id;
+  // SystemUser (super_admin) rows aren't in the tenant-scoped User table, so
+  // confirmedById / ledger.userId (which FK into User) must stay null for them.
+  const confirmedBy = req.user.role === "super_admin" ? null : req.user.id;
 
   if (!method)
     return res.status(400).json({ message: "method is required" });
@@ -316,7 +318,7 @@ router.post("/:id/confirm-payment", upload.single("proof"), async (req, res) => 
       return { payment, updatedInvoice };
     });
 
-    await audit(prisma, { tenantId, userId: confirmedBy, action: "CONFIRM_PAYMENT", entity: "Invoice", entityId: id, entityName: invoice.invoiceNumber, before: { status: "APPROVED" }, after: { status: "PAID", amount: invoice.totalAmount }, req });
+    await audit(prisma, { tenantId, userId: req.user?.id, action: "CONFIRM_PAYMENT", entity: "Invoice", entityId: id, entityName: invoice.invoiceNumber, before: { status: "APPROVED" }, after: { status: "PAID", amount: invoice.totalAmount }, req });
     await notifyTenant(prisma, { tenantId, title: "Payment Confirmed", message: `Payment of ₹${invoice.totalAmount} confirmed for invoice ${invoice.invoiceNumber || id}`, type: "SUCCESS" });
 
     res.json({ invoice: updatedInvoice, payment });
