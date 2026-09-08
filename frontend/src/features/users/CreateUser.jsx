@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useMatch } from "react-router-dom";
 import { CheckCircle, Eye, EyeOff, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
+import AddressFields from "../../components/AddressFields";
 
 import {
   createUserApi,
@@ -328,12 +329,12 @@ export default function CreateUser() {
           {/* ADDRESS */}
           <div className="rounded-xl border bg-slate-50 p-4">
             <h2 className="mb-4 text-sm font-semibold text-slate-700">Address</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Street"  name="line1"   value={form.address.line1}   onChange={onAddressChange} />
-              <Input label="City"    name="city"    value={form.address.city}    onChange={onAddressChange} />
-              <Input label="State"   name="state"   value={form.address.state}   onChange={onAddressChange} />
-              <Input label="Pincode" name="pincode" value={form.address.pincode} onChange={onAddressChange} />
-            </div>
+            <AddressFields
+              address={form.address}
+              onChange={(field, value) =>
+                setForm((prev) => ({ ...prev, address: { ...prev.address, [field]: value } }))
+              }
+            />
           </div>
 
           <button

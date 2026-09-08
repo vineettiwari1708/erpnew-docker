@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import { fullClientName } from "../../utils/clientName";
 import { Eye, EyeOff, KeyRound, UserPlus } from "lucide-react";
 import {
   getClientByIdApi,
@@ -22,6 +23,10 @@ import {
   AlertTriangle,
   X,
   BarChart3,
+  TrendingUp,
+  CheckCircle2,
+  Clock,
+  IndianRupee,
 } from "lucide-react";
 
 export default function ClientDetails() {
@@ -145,7 +150,7 @@ export default function ClientDetails() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{client.name}</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{fullClientName(client)}</h1>
           <p className="text-sm text-slate-500">
             {client.clientNumber && <span className="font-mono text-indigo-600 mr-2">{client.clientNumber}</span>}
             Client Full Profile
@@ -155,6 +160,45 @@ export default function ClientDetails() {
           ← Back
         </Link>
       </div>
+
+      {/* AMOUNT PANEL */}
+      {client.financials && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <AmountCard
+            icon={<IndianRupee size={18} />}
+            label="Total Billed"
+            value={client.financials.totalBilled}
+            color="indigo"
+          />
+          <AmountCard
+            icon={<CheckCircle2 size={18} />}
+            label="Total Paid"
+            value={client.financials.totalPaid}
+            color="green"
+          />
+          <AmountCard
+            icon={<Clock size={18} />}
+            label="Outstanding"
+            value={client.financials.outstanding}
+            color={client.financials.outstanding > 0 ? "red" : "slate"}
+          />
+          <AmountCard
+            icon={<TrendingUp size={18} />}
+            label="Invoices"
+            value={null}
+            color="blue"
+            extra={
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                <span>{client.financials.invoiceCount} total</span>
+                <span className="text-green-600">{client.financials.paidCount} paid</span>
+                {client.financials.overdueCount > 0 && (
+                  <span className="text-red-500">{client.financials.overdueCount} overdue</span>
+                )}
+              </div>
+            }
+          />
+        </div>
+      )}
 
       {/* TOP GRID */}
       <div className="grid gap-4 lg:grid-cols-3">
@@ -166,7 +210,7 @@ export default function ClientDetails() {
               {client.name?.charAt(0)}
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-800">{client.name}</h2>
+              <h2 className="text-lg font-semibold text-slate-800">{fullClientName(client)}</h2>
               <p className="text-sm text-slate-500">{client.email}</p>
             </div>
           </div>
@@ -212,10 +256,17 @@ export default function ClientDetails() {
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-slate-800">Overview</h3>
           <div className="space-y-3 text-sm">
-            <StatRow label="Total Projects" value={client.totalProjects ?? 0} />
-            <StatRow label="Total Paid"   value={`₹${(client.totalPaid ?? 0).toLocaleString()}`}    color="text-green-700" bg="bg-green-50" />
-            <StatRow label="Pending"      value={`₹${(client.pendingAmount ?? 0).toLocaleString()}`} color="text-yellow-700" bg="bg-yellow-50" />
-            <StatRow label="Invoices"     value={client.totalInvoices ?? 0}                          color="text-blue-700"  bg="bg-blue-50" />
+            <StatRow label="Total Projects" value={client._count?.projects ?? 0} />
+            <StatRow label="Total Invoices" value={client._count?.invoices ?? 0} color="text-blue-700" bg="bg-blue-50" />
+            <StatRow label="Total Payments" value={client._count?.payments ?? 0} color="text-purple-700" bg="bg-purple-50" />
+            {client.financials && (
+              <StatRow
+                label="Balance Due"
+                value={`₹${client.financials.outstanding.toLocaleString("en-IN")}`}
+                color={client.financials.outstanding > 0 ? "text-red-700" : "text-green-700"}
+                bg={client.financials.outstanding > 0 ? "bg-red-50" : "bg-green-50"}
+              />
+            )}
           </div>
         </div>
 
@@ -344,7 +395,7 @@ export default function ClientDetails() {
               <div>
                 <h3 className="font-semibold text-slate-800">Create Portal Account</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Give <strong>{client.name}</strong> login access to the client portal.
+                  Give <strong>{fullClientName(client)}</strong> login access to the client portal.
                 </p>
               </div>
               <button onClick={() => { setShowCreatePortal(false); setPortalEmail(""); setPortalPwd(""); setPortalPwdConfirm(""); }} className="text-slate-400 hover:text-slate-600">
@@ -407,7 +458,7 @@ export default function ClientDetails() {
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <h3 className="font-semibold text-slate-800">Reset Portal Password</h3>
-                <p className="mt-1 text-sm text-slate-500">Set a new password for <strong>{client.name}</strong>'s client portal login.</p>
+                <p className="mt-1 text-sm text-slate-500">Set a new password for <strong>{fullClientName(client)}</strong>'s client portal login.</p>
               </div>
               <button onClick={() => { setShowResetModal(false); setResetPwd(""); setResetConfirm(""); }} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
@@ -463,7 +514,7 @@ export default function ClientDetails() {
               <div className="flex-1">
                 <h3 className="font-semibold text-slate-800">Delete Client</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Are you sure you want to delete <strong>{client.name}</strong>? This action cannot be undone.
+                  Are you sure you want to delete <strong>{fullClientName(client)}</strong>? This action cannot be undone.
                 </p>
               </div>
               <button
@@ -496,6 +547,34 @@ function StatRow({ label, value, color = "text-slate-700", bg = "bg-slate-50" })
     <div className={`flex justify-between rounded-xl ${bg} p-3`}>
       <span>{label}</span>
       <span className={`font-semibold ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+const colorMap = {
+  indigo: { bg: "bg-indigo-50", icon: "text-indigo-600", label: "text-indigo-500", value: "text-indigo-800", border: "border-indigo-100" },
+  green:  { bg: "bg-green-50",  icon: "text-green-600",  label: "text-green-500",  value: "text-green-800",  border: "border-green-100" },
+  red:    { bg: "bg-red-50",    icon: "text-red-500",    label: "text-red-400",    value: "text-red-700",    border: "border-red-100" },
+  blue:   { bg: "bg-blue-50",   icon: "text-blue-600",   label: "text-blue-500",   value: "text-blue-800",   border: "border-blue-100" },
+  slate:  { bg: "bg-slate-50",  icon: "text-slate-500",  label: "text-slate-400",  value: "text-slate-700",  border: "border-slate-100" },
+};
+
+function AmountCard({ icon, label, value, color = "indigo", extra }) {
+  const c = colorMap[color] || colorMap.indigo;
+  return (
+    <div className={`rounded-2xl border ${c.border} ${c.bg} p-4 shadow-sm`}>
+      <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm ${c.icon}`}>
+        {icon}
+      </div>
+      <p className={`text-xs font-medium uppercase tracking-wide ${c.label}`}>{label}</p>
+      {value !== null ? (
+        <p className={`mt-1 text-xl font-bold tabular-nums ${c.value}`}>
+          ₹{value.toLocaleString("en-IN")}
+        </p>
+      ) : (
+        extra
+      )}
+      {value !== null && extra}
     </div>
   );
 }

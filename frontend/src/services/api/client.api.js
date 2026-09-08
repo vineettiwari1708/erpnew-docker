@@ -3,8 +3,14 @@ import { store } from "../../store/store";
 
 const getTenantId = () => store.getState().auth.user?.tenantId;
 
-export const getClientsApi = async (tenantId) => {
-  const res = await http.get(`/${tenantId}/clients`);
+export const getClientsApi = async (tenantId, { archived = false } = {}) => {
+  const res = await http.get(`/${tenantId}/clients`, { params: { archived } });
+  return { data: res.data };
+};
+
+export const archiveClientApi = async (id) => {
+  const tenantId = getTenantId();
+  const res = await http.patch(`/${tenantId}/clients/${id}/archive`);
   return { data: res.data };
 };
 

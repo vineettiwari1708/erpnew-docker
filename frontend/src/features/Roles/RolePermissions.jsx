@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
+import toast from "react-hot-toast";
 import { getRoleByNameApi, updateRolePermissionsApi } from "../../services/api/role.api";
 
 const ALL_PERMISSIONS = [
@@ -40,9 +41,7 @@ export default function RolePermissions() {
 
   const [selected, setSelected]   = useState(new Set());
   const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [success, setSuccess]     = useState("");
-  const [error, setError]         = useState("");
+  const [saving, setSaving] = useState(false);
   const [roleInfo, setRoleInfo]   = useState(null);
 
   /* ── LOAD current permissions from backend ── */
@@ -54,7 +53,7 @@ export default function RolePermissions() {
         setRoleInfo(data);
         setSelected(new Set(data.permissions.map((p) => p.key)));
       })
-      .catch(() => setError("Failed to load role. Is the backend running?"))
+      .catch(() => toast.error("Failed to load role. Is the backend running?"))
       .finally(() => setLoading(false));
   }, [tenantId, roleName]);
 
@@ -65,7 +64,6 @@ export default function RolePermissions() {
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
-    setSuccess("");
   }
 
   /* ── Toggle all in a module ── */
@@ -76,19 +74,16 @@ export default function RolePermissions() {
       keys.forEach((k) => allChecked ? next.delete(k) : next.add(k));
       return next;
     });
-    setSuccess("");
   }
 
   /* ── Save to backend ── */
   async function handleSave() {
     setSaving(true);
-    setSuccess("");
-    setError("");
     try {
       await updateRolePermissionsApi(tenantId, roleName, [...selected]);
-      setSuccess("Permissions saved successfully.");
+      toast.success("Permissions saved successfully.");
     } catch (err) {
-      setError(err.response?.data?.message || "Save failed.");
+      toast.error(err.response?.data?.message || "Save failed.");
     } finally {
       setSaving(false);
     }
@@ -127,18 +122,6 @@ export default function RolePermissions() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
-
-      {/* FEEDBACK */}
-      {success && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          {success}
-        </div>
-      )}
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
 
       {/* PERMISSION GROUPS */}
       <div className="space-y-4">

@@ -3,6 +3,7 @@ const prisma                         = require("../config/db");
 const { upload, uploadToImageKit }   = require("../middleware/upload.middleware");
 const audit                          = require("../utils/audit");
 const { genPaymentNumber }           = require("../utils/refNumber");
+const { notify }                     = require("../utils/notify");
 
 const router = express.Router({ mergeParams: true });
 
@@ -26,7 +27,7 @@ router.get("/", async (req, res) => {
       where: { tenantId, isDeleted: false, ...clientFilter, ...(status && { status }) },
       include: {
         invoice:     { select: { id: true, invoiceNumber: true, title: true } },
-        client:      { select: { id: true, name: true } },
+        client:      { select: { id: true, prefix: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
         _count:      { select: { ledger: true } },
       },
@@ -63,7 +64,7 @@ router.get("/:id", async (req, res) => {
       where:   { tenantId, isDeleted: false, ...clientScope, OR: [{ id }, { paymentNumber: id }] },
       include: {
         invoice:     { select: { id: true, invoiceNumber: true, title: true, totalAmount: true } },
-        client:      { select: { id: true, name: true } },
+        client:      { select: { id: true, prefix: true, name: true } },
         confirmedBy: { select: { id: true, name: true } },
         submittedBy: { select: { id: true, name: true } },
       },
@@ -106,6 +107,21 @@ router.post("/", upload.single("proof"), async (req, res) => {
       const confirmedById = confirmerId(req);
 
       const { payment } = await prisma.$transaction(async (tx) => {
+        // Fetch invoice details and sum existing confirmed payments
+        const [inv, existingPaid] = await Promise.all([
+          tx.invoice.findUnique({
+            where:  { id: invoiceId },
+            select: { invoiceNumber: true, totalAmount: true },
+          }),
+          tx.payment.aggregate({
+            where: { invoiceId, status: "SUCCESS", isDeleted: false },
+            _sum:  { amount: true },
+          }),
+        ]);
+
+        const totalPaid   = (existingPaid._sum.amount || 0) + Number(amount);
+        const isFullyPaid = totalPaid >= (inv?.totalAmount || 0);
+
         const payment = await tx.payment.create({
           data: {
             tenantId, invoiceId, clientId,
@@ -121,12 +137,12 @@ router.post("/", upload.single("proof"), async (req, res) => {
 
         await tx.invoice.update({
           where: { id: invoiceId },
-          data:  { status: "PAID", paidAt: paidDate, updatedAt: new Date() },
-        });
-
-        const inv = await tx.invoice.findUnique({
-          where:  { id: invoiceId },
-          select: { invoiceNumber: true, totalAmount: true },
+          data:  {
+            status:     isFullyPaid ? "PAID" : "PARTIAL",
+            paidAmount: totalPaid,
+            ...(isFullyPaid ? { paidAt: paidDate } : {}),
+            updatedAt: new Date(),
+          },
         });
 
         await tx.ledger.create({
@@ -261,6 +277,109 @@ router.put("/:id", upload.single("proof"), async (req, res) => {
     res.json(payment);
   } catch (err) {
     res.status(500).json({ message: "Failed to update payment", error: err.message });
+  }
+});
+
+/* ── PATCH /:id/approve — approve a PENDING (client-submitted) payment ── */
+router.patch("/:id/approve", async (req, res) => {
+  if (isClient(req)) return res.status(403).json({ message: "Access denied" });
+
+  const { tenantId, id } = req.params;
+
+  try {
+    const payment = await prisma.payment.findFirst({ where: { id, tenantId, isDeleted: false } });
+    if (!payment) return res.status(404).json({ message: "Payment not found" });
+    if (payment.status !== "PENDING")
+      return res.status(409).json({ message: `Payment is already ${payment.status.toLowerCase()}` });
+
+    const now = new Date();
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const [inv, existingPaid] = await Promise.all([
+        tx.invoice.findUnique({ where: { id: payment.invoiceId }, select: { invoiceNumber: true, totalAmount: true } }),
+        tx.payment.aggregate({
+          where: { invoiceId: payment.invoiceId, status: "SUCCESS", isDeleted: false },
+          _sum: { amount: true },
+        }),
+      ]);
+
+      const totalPaid   = (existingPaid._sum.amount || 0) + Number(payment.amount);
+      const isFullyPaid = totalPaid >= (inv?.totalAmount || 0);
+
+      const updatedPayment = await tx.payment.update({
+        where: { id },
+        data:  { status: "SUCCESS", confirmedById: req.user.id, confirmedAt: now, paidAt: payment.paidAt || now, updatedAt: now },
+      });
+
+      await tx.invoice.update({
+        where: { id: payment.invoiceId },
+        data:  {
+          status:     isFullyPaid ? "PAID" : "PARTIAL",
+          paidAmount: totalPaid,
+          ...(isFullyPaid ? { paidAt: now } : {}),
+          updatedAt: now,
+        },
+      });
+
+      await tx.ledger.create({
+        data: {
+          tenantId,
+          userId:      req.user.id,
+          invoiceId:   payment.invoiceId,
+          paymentId:   updatedPayment.id,
+          type:        "CREDIT",
+          amount:      Number(payment.amount),
+          source:      "INVOICE_PAYMENT",
+          description: `Payment approved for ${inv?.invoiceNumber || payment.invoiceId}`,
+          referenceId: updatedPayment.id,
+        },
+      });
+
+      return updatedPayment;
+    });
+
+    const inv = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { invoiceNumber: true } });
+    await audit(prisma, { tenantId, userId: req.user.id, action: "APPROVE", entity: "Payment", entityId: id, entityName: inv?.invoiceNumber, before: { status: "PENDING" }, after: { status: "SUCCESS", amount: payment.amount }, req });
+    if (payment.submittedById) {
+      await notify(prisma, { tenantId, userId: payment.submittedById, title: "Payment Approved", message: `Your payment of ₹${payment.amount} for ${inv?.invoiceNumber || payment.invoiceId} has been approved`, type: "SUCCESS" });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to approve payment", error: err.message });
+  }
+});
+
+/* ── PATCH /:id/reject — reject a PENDING (client-submitted) payment ── */
+router.patch("/:id/reject", async (req, res) => {
+  if (isClient(req)) return res.status(403).json({ message: "Access denied" });
+
+  const { tenantId, id } = req.params;
+  const { reason } = req.body;
+
+  try {
+    const payment = await prisma.payment.findFirst({ where: { id, tenantId, isDeleted: false } });
+    if (!payment) return res.status(404).json({ message: "Payment not found" });
+    if (payment.status !== "PENDING")
+      return res.status(409).json({ message: `Payment is already ${payment.status.toLowerCase()}` });
+
+    const now = new Date();
+    const notes = reason ? `${payment.notes ? payment.notes + " | " : ""}Rejected: ${reason}` : payment.notes;
+
+    const updated = await prisma.payment.update({
+      where: { id },
+      data:  { status: "REJECTED", confirmedById: req.user.id, confirmedAt: now, notes, updatedAt: now },
+    });
+
+    const inv = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { invoiceNumber: true } });
+    await audit(prisma, { tenantId, userId: req.user.id, action: "REJECT", entity: "Payment", entityId: id, entityName: inv?.invoiceNumber, before: { status: "PENDING" }, after: { status: "REJECTED", reason: reason || null }, req });
+    if (payment.submittedById) {
+      await notify(prisma, { tenantId, userId: payment.submittedById, title: "Payment Rejected", message: reason ? `Your payment of ₹${payment.amount} was rejected: ${reason}` : `Your payment of ₹${payment.amount} was rejected`, type: "WARNING" });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to reject payment", error: err.message });
   }
 });
 

@@ -33,6 +33,26 @@ function relativeTime(dateStr) {
   return new Date(dateStr).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" });
 }
 
+function getGroup(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days < 1)  return "Today";
+  if (days < 2)  return "Yesterday";
+  if (days < 7)  return "This Week";
+  return "Earlier";
+}
+
+function groupNotifications(list) {
+  const order = ["Today", "Yesterday", "This Week", "Earlier"];
+  const groups = {};
+  list.forEach((n) => {
+    const g = getGroup(n.createdAt);
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(n);
+  });
+  return order.filter((g) => groups[g]).map((g) => ({ label: g, items: groups[g] }));
+}
+
 export default function Header({ setSidebarOpen }) {
   const { user } = useAuth();
   const { tenantId: urlTenantId } = useParams();
@@ -42,6 +62,7 @@ export default function Header({ setSidebarOpen }) {
   const [open, setOpen]                   = useState(false);
   const [profileOpen, setProfileOpen]     = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [activeTab, setActiveTab]         = useState("ALL");
   /* super admin tracks read IDs in-session only (no backend persistence) */
   const [sysReadIds, setSysReadIds]       = useState(new Set());
   const panelRef   = useRef(null);
@@ -56,6 +77,18 @@ export default function Header({ setSidebarOpen }) {
     : notifications;
 
   const unread = displayNotifications.filter((n) => !n.read).length;
+
+  const tabList = [
+    { key: "ALL",     label: "All"     },
+    { key: "INFO",    label: "Info"    },
+    { key: "SUCCESS", label: "Success" },
+    { key: "WARNING", label: "Warning" },
+    { key: "ERROR",   label: "Error"   },
+  ];
+
+  const filteredNotifications = activeTab === "ALL"
+    ? displayNotifications
+    : displayNotifications.filter((n) => (n.type || "INFO") === activeTab);
 
   /* ── FETCH notifications ── */
   const fetchNotifications = () => {
@@ -195,44 +228,89 @@ export default function Header({ setSidebarOpen }) {
                     )}
                   </div>
 
+                  {/* Tabs */}
+                  <div className="flex gap-1 border-b border-slate-100 px-3 py-2 bg-white overflow-x-auto">
+                    {tabList.map((tab) => {
+                      const count = tab.key === "ALL"
+                        ? displayNotifications.length
+                        : displayNotifications.filter((n) => (n.type || "INFO") === tab.key).length;
+                      return (
+                        <button
+                          key={tab.key}
+                          onClick={() => setActiveTab(tab.key)}
+                          className={`flex shrink-0 items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                            activeTab === tab.key
+                              ? "bg-indigo-600 text-white"
+                              : "text-slate-500 hover:bg-slate-100"
+                          }`}
+                        >
+                          {tab.label}
+                          {count > 0 && (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${
+                              activeTab === tab.key ? "bg-white/25 text-white" : "bg-slate-200 text-slate-600"
+                            }`}>
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   {/* List */}
-                  <div className="max-h-[22rem] overflow-y-auto divide-y divide-slate-100">
-                    {displayNotifications.length === 0 ? (
+                  <div className="max-h-[20rem] overflow-y-auto">
+                    {filteredNotifications.length === 0 ? (
                       <div className="flex flex-col items-center gap-2 py-10">
                         <Bell size={28} className="text-slate-200" />
                         <p className="text-sm text-slate-400">All caught up</p>
                       </div>
                     ) : (
-                      displayNotifications.slice(0, 20).map((n) => {
-                        const cfg  = TYPE_CONFIG[n.type] || TYPE_CONFIG.INFO;
-                        const Icon = cfg.icon;
-                        return (
-                          <div
-                            key={n.id}
-                            onClick={() => !n.read && handleMarkRead(n.id)}
-                            className={`flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors hover:bg-slate-50 ${
-                              !n.read ? "bg-indigo-50/40" : ""
-                            }`}
-                          >
-                            {/* Type icon */}
-                            <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${cfg.bg}`}>
-                              <Icon size={15} className={cfg.icon_color} />
-                            </div>
-
-                            {/* Content */}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold text-slate-800 leading-snug">{n.title}</p>
-                              <p className="mt-0.5 text-xs text-slate-500 leading-relaxed line-clamp-2">{n.message}</p>
-                              <p className="mt-1 text-[10px] font-medium text-slate-400">{relativeTime(n.createdAt)}</p>
-                            </div>
-
-                            {/* Unread dot */}
-                            {!n.read && (
-                              <div className={`mt-2 h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
-                            )}
+                      groupNotifications(filteredNotifications.slice(0, 30)).map(({ label, items }) => (
+                        <div key={label}>
+                          {/* Group label */}
+                          <div className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-sm border-y border-slate-100 px-4 py-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</span>
                           </div>
-                        );
-                      })
+
+                          {items.map((n) => {
+                            const cfg  = TYPE_CONFIG[n.type] || TYPE_CONFIG.INFO;
+                            const Icon = cfg.icon;
+                            return (
+                              <div
+                                key={n.id}
+                                onClick={() => !n.read && handleMarkRead(n.id)}
+                                className={`relative flex cursor-pointer items-start gap-3 px-4 py-3 transition-all hover:bg-slate-50 border-b border-slate-100 ${
+                                  !n.read ? "bg-indigo-50/60" : "bg-white opacity-75"
+                                }`}
+                              >
+                                {/* Unread left bar */}
+                                {!n.read && (
+                                  <div className={`absolute left-0 top-0 h-full w-0.5 rounded-r ${cfg.dot}`} />
+                                )}
+
+                                {/* Type icon */}
+                                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${!n.read ? cfg.bg : "bg-slate-100"}`}>
+                                  <Icon size={15} className={!n.read ? cfg.icon_color : "text-slate-400"} />
+                                </div>
+
+                                {/* Content */}
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-xs leading-snug ${!n.read ? "font-semibold text-slate-800" : "font-medium text-slate-500"}`}>
+                                    {n.title}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-400 leading-relaxed line-clamp-2">{n.message}</p>
+                                  <p className="mt-1 text-[10px] font-medium text-slate-400">{relativeTime(n.createdAt)}</p>
+                                </div>
+
+                                {/* Unread dot */}
+                                {!n.read && (
+                                  <div className={`mt-2 h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))
                     )}
                   </div>
 

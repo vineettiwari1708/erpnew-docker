@@ -1,13 +1,14 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Eye, Download, FileText, Search, Trash2 } from "lucide-react";
+import { Eye, Download, FileText, Search, Trash2, Check, X } from "lucide-react";
 
 import { PDFDownloadLink, PDFViewer } from "@react-pdf/renderer";
 
-import { getPaymentsApi, deletePaymentApi } from "../../services/api/payment.api";
+import { getPaymentsApi, deletePaymentApi, approvePaymentApi, rejectPaymentApi } from "../../services/api/payment.api";
 import toast from "react-hot-toast";
 import { useAuth, useTenantPath, useHasPermission, useTenantProfile } from "../../store/hooks";
 import { fmtDate } from "../../utils/formatDate";
+import { fullClientName } from "../../utils/clientName";
 import PaymentPDF from "../../pdf/PaymentPDF";
 
 export default function Payments() {
@@ -26,6 +27,11 @@ export default function Payments() {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [approvingId, setApprovingId] = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
@@ -60,18 +66,28 @@ export default function Payments() {
 
   const filteredPayments = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return payments;
-    return payments.filter((p) =>
-      (p.paymentNumber          || "").toLowerCase().includes(q) ||
-      (p.id                     || "").toLowerCase().includes(q) ||
-      (p.invoiceId              || "").toLowerCase().includes(q) ||
-      (p.invoice?.invoiceNumber || "").toLowerCase().includes(q) ||
-      (p.invoice?.title         || "").toLowerCase().includes(q) ||
-      (p.client?.name           || "").toLowerCase().includes(q) ||
-      (p.method                 || "").toLowerCase().includes(q) ||
-      (p.status                 || "").toLowerCase().includes(q)
-    );
-  }, [payments, search]);
+    return payments
+      .filter((p) => statusFilter === "ALL" || p.status === statusFilter)
+      .filter((p) => {
+        if (!q) return true;
+        return (
+          (p.paymentNumber          || "").toLowerCase().includes(q) ||
+          (p.id                     || "").toLowerCase().includes(q) ||
+          (p.invoiceId              || "").toLowerCase().includes(q) ||
+          (p.invoice?.invoiceNumber || "").toLowerCase().includes(q) ||
+          (p.invoice?.title         || "").toLowerCase().includes(q) ||
+          (p.client?.name           || "").toLowerCase().includes(q) ||
+          (p.method                 || "").toLowerCase().includes(q) ||
+          (p.status                 || "").toLowerCase().includes(q)
+        );
+      });
+  }, [payments, search, statusFilter]);
+
+  const statusCounts = useMemo(() => {
+    const c = { ALL: payments.length, PENDING: 0, SUCCESS: 0, REJECTED: 0 };
+    payments.forEach((p) => { c[p.status] = (c[p.status] || 0) + 1; });
+    return c;
+  }, [payments]);
 
   const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
 
@@ -101,6 +117,37 @@ export default function Payments() {
       toast.error(err?.response?.data?.message || err.message || "Delete failed");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  /* ================= APPROVE / REJECT ================= */
+
+  const handleApprove = async (pay) => {
+    setApprovingId(pay.id);
+    try {
+      const res = await approvePaymentApi(pay.id);
+      setPayments((prev) => prev.map((p) => (p.id === pay.id ? { ...p, ...res.data } : p)));
+      toast.success(`Payment "${pay.paymentNumber || pay.id.slice(0, 8)}" approved`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to approve payment");
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const submitReject = async () => {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    try {
+      const res = await rejectPaymentApi(rejectTarget.id, rejectReason.trim());
+      setPayments((prev) => prev.map((p) => (p.id === rejectTarget.id ? { ...p, ...res.data } : p)));
+      toast.success("Payment rejected");
+      setRejectTarget(null);
+      setRejectReason("");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to reject payment");
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -139,6 +186,26 @@ export default function Payments() {
         )}
       </div>
 
+      {/* STATUS FILTER CHIPS */}
+      <div className="flex flex-wrap gap-2">
+        {["ALL", "PENDING", "SUCCESS", "REJECTED"].map((f) => (
+          <button
+            key={f}
+            onClick={() => { setStatusFilter(f); setCurrentPage(1); }}
+            className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${
+              statusFilter === f
+                ? "border-indigo-600 bg-indigo-600 text-white"
+                : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+            }`}
+          >
+            {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+            <span className={`rounded-full px-1.5 text-[10px] ${statusFilter === f ? "bg-white/25" : "bg-slate-100"}`}>
+              {statusCounts[f] || 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* SEARCH */}
       <div className="relative">
         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -163,9 +230,7 @@ export default function Payments() {
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Invoice</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Client</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Method</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Txn Ref</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Paid On</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Payment Info</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Action</th>
               </tr>
@@ -195,12 +260,12 @@ export default function Payments() {
                     >
                       <Link
                         to={tp(`/invoices/${pay.invoice?.invoiceNumber || pay.invoiceId}`)}
-                        className="text-sm font-medium text-slate-800 hover:text-indigo-600 whitespace-nowrap underline decoration-dotted decoration-slate-400"
+                        className="text-sm font-semibold whitespace-nowrap underline decoration-dotted text-indigo-600 hover:text-indigo-800 decoration-indigo-300"
                       >
                         {pay.invoice?.invoiceNumber || pay.invoiceId}
                       </Link>
                       {pay.invoice?.title && (
-                        <p className="text-xs text-slate-500 truncate max-w-[160px]">
+                        <p className="text-xs mt-0.5 text-slate-500 truncate max-w-[160px]">
                           {pay.invoice.title}
                         </p>
                       )}
@@ -208,7 +273,7 @@ export default function Payments() {
 
                     {/* CLIENT */}
                     <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
-                      {pay.client?.name || pay.clientId || "—"}
+                      {fullClientName(pay.client) || pay.clientId || "—"}
                     </td>
 
                     {/* AMOUNT */}
@@ -216,25 +281,24 @@ export default function Payments() {
                       ₹{Number(pay.amount || 0).toLocaleString("en-IN")}
                     </td>
 
-                    {/* METHOD */}
-                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{pay.method || "—"}</td>
-
-                    {/* TRANSACTION REF */}
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {pay.transactionId || <span className="text-slate-300">—</span>}
-                    </td>
-
-                    {/* PAID ON */}
-                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                      {pay.paidAt
-                        ? fmtDate(pay.paidAt)
-                        : "—"}
+                    {/* METHOD + TXN REF + PAID ON */}
+                    <td className="px-4 py-3 whitespace-nowrap cursor-default">
+                      <div className="group flex flex-col gap-0.5 transition-transform duration-200 hover:scale-[1.12] origin-left">
+                        <span className="text-sm font-semibold text-slate-600 font-mono group-hover:text-slate-800 transition-colors duration-200">
+                          {pay.transactionId || <span className="text-slate-300 font-sans">No ref</span>}
+                          {pay.method && <span className="ml-1 font-sans font-semibold text-slate-400 group-hover:text-slate-600">({pay.method})</span>}
+                        </span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-600 transition-colors duration-200">
+                          <span className="font-medium text-slate-500 group-hover:text-slate-700">Paid</span>{" "}
+                          {pay.paidAt ? fmtDate(pay.paidAt) : "—"}
+                        </span>
+                      </div>
                     </td>
 
                     {/* STATUS */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span
-                        className={`px-3 py-1 text-xs rounded-full font-semibold ${
+                        className={`fp px-3 py-1 text-xs rounded-full font-semibold ${
                           pay.status === "SUCCESS"
                             ? "bg-green-100 text-green-700"
                             : pay.status === "PENDING"
@@ -249,6 +313,27 @@ export default function Payments() {
                     {/* ACTIONS */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-3 items-center">
+                        {canEdit && pay.status === "PENDING" && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(pay)}
+                              disabled={approvingId === pay.id}
+                              className="flex items-center gap-1 rounded-lg bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:opacity-60"
+                              title="Approve Payment"
+                            >
+                              <Check size={13} />
+                              {approvingId === pay.id ? "..." : "Approve"}
+                            </button>
+                            <button
+                              onClick={() => { setRejectTarget(pay); setRejectReason(""); }}
+                              className="flex items-center gap-1 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+                              title="Reject Payment"
+                            >
+                              <X size={13} />
+                              Reject
+                            </button>
+                          </>
+                        )}
                         <Link
                           to={tp(`/payments/${pay.paymentNumber || pay.id}`)}
                           className="text-slate-600 hover:text-indigo-600"
@@ -365,7 +450,7 @@ export default function Payments() {
       {tooltip && (
         <div
           className="pointer-events-none fixed z-[999] w-72 rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{ left: tooltip.x + 14, top: tooltip.y, transform: "translateY(-50%)" }}
+          style={{ left: tooltip.x + 14, top: Math.max(140, Math.min(tooltip.y, window.innerHeight - 140)), transform: "translateY(-50%)" }}
         >
           {/* colour strip */}
           <div className={`rounded-t-2xl px-4 py-3 ${
@@ -392,7 +477,7 @@ export default function Payments() {
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Client</p>
-                <p className="mt-0.5 text-sm font-medium text-slate-800">{tooltip.pay.client?.name || tooltip.pay.clientId || "—"}</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800">{fullClientName(tooltip.pay.client) || tooltip.pay.clientId || "—"}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Method</p>
@@ -446,6 +531,45 @@ export default function Payments() {
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REJECT PAYMENT MODAL */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-800">Reject Payment</h2>
+              <button onClick={() => setRejectTarget(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-slate-500">
+              {fullClientName(rejectTarget.client)} — ₹{Number(rejectTarget.amount || 0).toLocaleString("en-IN")}
+            </p>
+            <textarea
+              rows="3"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason (optional, shown to the client)..."
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setRejectTarget(null)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitReject}
+                disabled={rejecting}
+                className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-60"
+              >
+                {rejecting ? "Rejecting..." : "Reject"}
               </button>
             </div>
           </div>

@@ -14,6 +14,7 @@ import {
 import InvoicePDF from "../../pdf/InvoicePDF";
 import { useTenantPath, useHasPermission, useTenantProfile } from "../../store/hooks";
 import { fmtDate } from "../../utils/formatDate";
+import { fullClientName } from "../../utils/clientName";
 
 export default function Invoices() {
   const tp = useTenantPath();
@@ -66,11 +67,14 @@ export default function Invoices() {
     try {
       setDeleting(true);
       await deleteInvoiceApi(deleteTarget.id);
-      setInvoices((prev) => prev.filter((i) => i.id !== deleteTarget.id));
-      toast.success(`Invoice "${deleteTarget.invoiceNumber || deleteTarget.id}" deleted`);
+      // Backend now VOIDS (CANCELLED) instead of deleting — update status in state
+      setInvoices((prev) =>
+        prev.map((i) => i.id === deleteTarget.id ? { ...i, status: "CANCELLED" } : i)
+      );
+      toast.success(`Invoice "${deleteTarget.invoiceNumber || deleteTarget.id}" voided`);
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err?.response?.data?.message || err.message || "Delete failed");
+      toast.error(err?.response?.data?.message || err.message || "Void failed");
     } finally {
       setDeleting(false);
     }
@@ -143,15 +147,17 @@ export default function Invoices() {
     );
   }, [invoices, search]);
 
-  const totalPaid = invoices
+  const activeInvoices = invoices.filter((i) => i.status !== "CANCELLED");
+
+  const totalPaid = activeInvoices
     .filter((i) => i.status === "PAID")
     .reduce((a, b) => a + (b.totalAmount || b.amount || 0), 0);
 
-  const totalPending = invoices
+  const totalPending = activeInvoices
     .filter((i) => i.status === "PENDING")
     .reduce((a, b) => a + (b.totalAmount || b.amount || 0), 0);
 
-  const totalApproved = invoices
+  const totalApproved = activeInvoices
     .filter((i) => i.status === "APPROVED")
     .reduce((a, b) => a + (b.totalAmount || b.amount || 0), 0);
 
@@ -177,7 +183,7 @@ export default function Invoices() {
 
       {/* STATS */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card title="Total Invoices" value={invoices.length} />
+        <Card title="Total Invoices" value={activeInvoices.length} />
         <Card title="Paid Amount" value={`₹${totalPaid.toLocaleString()}`} green />
         <Card title="Approved (Awaiting)" value={`₹${totalApproved.toLocaleString()}`} blue />
         <Card title="Pending Approval" value={`₹${totalPending.toLocaleString()}`} yellow />
@@ -203,24 +209,24 @@ export default function Invoices() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[820px] w-full text-sm">
+            <table className="min-w-[680px] w-full text-sm">
               <thead className="bg-slate-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Invoice</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Client</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Issue Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Due Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Dates</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
 
               <tbody>
 
-                {filteredInvoices.map((inv) => (
-                  <tr key={inv.id} className="border-t hover:bg-slate-50 transition-colors">
-                    {/* INVOICE NUMBER + TITLE — tooltip trigger + clickable link */}
+                {filteredInvoices.map((inv) => {
+                  const isVoided = inv.status === "CANCELLED";
+                  return (
+                  <tr key={inv.id} className={`border-t transition-colors ${isVoided ? "bg-red-50/40 opacity-70" : "hover:bg-slate-50"}`}>
+                    {/* INVOICE NUMBER + TITLE */}
                     <td
                       className="px-4 py-3"
                       onMouseEnter={(e) => setTooltip({ inv, x: e.clientX, y: e.clientY })}
@@ -229,46 +235,46 @@ export default function Invoices() {
                     >
                       <Link
                         to={tp(`/invoices/${inv.invoiceNumber || inv.id}`)}
-                        className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap underline decoration-dotted decoration-indigo-300"
+                        className={`text-sm font-semibold whitespace-nowrap underline decoration-dotted ${isVoided ? "line-through text-slate-400 decoration-slate-300" : "text-indigo-600 hover:text-indigo-800 decoration-indigo-300"}`}
                       >
                         {inv.invoiceNumber || inv.id}
                       </Link>
-                      <p className="text-xs text-slate-500 mt-0.5 max-w-[180px] truncate">{inv.title || "—"}</p>
+                      <p className={`text-xs mt-0.5 max-w-[180px] truncate ${isVoided ? "line-through text-slate-300" : "text-slate-500"}`}>{inv.title || "—"}</p>
                     </td>
 
                     {/* CLIENT */}
-                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{inv.client?.name || inv.clientId}</td>
+                    <td className={`px-4 py-3 text-sm whitespace-nowrap ${isVoided ? "text-slate-400 line-through" : "text-slate-600"}`}>{fullClientName(inv.client) || inv.clientId}</td>
 
-                    {/* AMOUNT */}
-                    <td className="px-4 py-3 text-sm font-semibold text-slate-800 whitespace-nowrap">
-                      ₹{(inv.totalAmount || inv.amount || 0).toLocaleString()}
-                    </td>
-
-                    {/* ISSUE DATE */}
-                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                      {inv.issueDate || inv.issuedDate
-                        ? fmtDate(inv.issueDate || inv.issuedDate)
-                        : "—"}
-                    </td>
-
-                    {/* DUE DATE */}
-                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                      {inv.dueDate
-                        ? fmtDate(inv.dueDate)
-                        : "—"}
-                    </td>
-
-                    {/* STATUS */}
+                    {/* AMOUNT + STATUS */}
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <StatusBadge status={inv.status} />
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-sm font-semibold ${isVoided ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                          ₹{(inv.totalAmount || inv.amount || 0).toLocaleString()}
+                        </span>
+                        <StatusBadge status={inv.status} />
+                      </div>
+                    </td>
+
+                    {/* DATES — sandwich: issued on top, due below */}
+                    <td className="px-4 py-3 whitespace-nowrap cursor-default">
+                      <div className="group flex flex-col gap-0.5 transition-transform duration-200 hover:scale-[1.18] origin-left">
+                        <span className="text-xs text-slate-400 group-hover:text-slate-600 transition-colors duration-200">
+                          <span className="font-medium text-slate-500 group-hover:text-slate-700">Issued</span>{" "}
+                          {inv.issueDate || inv.issuedDate ? fmtDate(inv.issueDate || inv.issuedDate) : "—"}
+                        </span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-600 transition-colors duration-200">
+                          <span className={`font-medium ${inv.dueDate && new Date(inv.dueDate) < new Date() && inv.status !== "PAID" ? "text-red-500" : "text-slate-500 group-hover:text-slate-700"}`}>Due</span>{" "}
+                          {inv.dueDate ? fmtDate(inv.dueDate) : "—"}
+                        </span>
+                      </div>
                     </td>
 
                     {/* ACTIONS */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-3">
 
-                        {/* APPROVE — PENDING invoices, ADMIN/MANAGER only */}
-                        {canApprove && inv.status === "PENDING" && (
+                        {/* APPROVE — PENDING invoices only, skip if voided */}
+                        {!isVoided && canApprove && inv.status === "PENDING" && (
                           <button
                             onClick={() => handleApprove(inv)}
                             disabled={actionLoading}
@@ -279,8 +285,8 @@ export default function Invoices() {
                           </button>
                         )}
 
-                        {/* CONFIRM PAYMENT — APPROVED invoices, ADMIN/MANAGER only */}
-                        {canApprove && inv.status === "APPROVED" && (
+                        {/* CONFIRM PAYMENT — APPROVED invoices only, skip if voided */}
+                        {!isVoided && canApprove && inv.status === "APPROVED" && (
                           <button
                             onClick={() => setConfirmModal(inv)}
                             disabled={actionLoading}
@@ -322,38 +328,27 @@ export default function Invoices() {
                           </svg>
                         </Link> */}
 
-                        {canEdit && (
+                        {/* EDIT — locked for PAID and CANCELLED */}
+                        {!isVoided && canEdit && inv.status !== "PAID" && (
                           <Link
                             to={tp(`/invoices/edit/${inv.id}`)}
                             className="text-slate-600 hover:text-green-600"
                             title="Edit Invoice"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                             </svg>
                           </Link>
                         )}
 
-                        {/* DELETE — only DRAFT/PENDING invoices with no payments or ledger entries */}
-                        {canDelete &&
-                          !["APPROVED", "PAID", "OVERDUE"].includes(inv.status) &&
-                          (inv._count?.payments ?? 0) === 0 &&
-                          (inv._count?.ledger   ?? 0) === 0 && (
+                        {/* VOID — only DRAFT/PENDING/OVERDUE with no ledger */}
+                        {!isVoided && canDelete &&
+                          inv.status !== "PAID" &&
+                          (inv._count?.ledger ?? 0) === 0 && (
                           <button
                             onClick={() => setDeleteTarget(inv)}
                             className="text-slate-400 hover:text-red-600"
-                            title="Delete Invoice"
+                            title="Void Invoice"
                           >
                             <Trash2 size={17} />
                           </button>
@@ -384,7 +379,8 @@ export default function Invoices() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -395,13 +391,21 @@ export default function Invoices() {
       {tooltip && (
         <div
           className="pointer-events-none fixed z-[999] w-80 rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{ left: tooltip.x + 14, top: tooltip.y, transform: "translateY(-50%)" }}
+          style={{ left: tooltip.x + 14, top: Math.max(175, Math.min(tooltip.y, window.innerHeight - 175)), transform: "translateY(-50%)" }}
         >
           {/* colour strip */}
-          <div className="rounded-t-2xl bg-indigo-600 px-4 py-3">
+          <div className={`rounded-t-2xl px-4 py-3 ${{
+            PAID:      "bg-green-600",
+            PARTIAL:   "bg-amber-500",
+            APPROVED:  "bg-blue-600",
+            PENDING:   "bg-yellow-500",
+            OVERDUE:   "bg-red-600",
+            DRAFT:     "bg-slate-500",
+            CANCELLED: "bg-slate-400",
+          }[tooltip.inv.status] || "bg-indigo-600"}`}>
             <p className="font-mono text-sm font-bold text-white">{tooltip.inv.invoiceNumber || tooltip.inv.id}</p>
             {tooltip.inv.title && (
-              <p className="mt-0.5 text-xs text-indigo-200 truncate">{tooltip.inv.title}</p>
+              <p className="mt-0.5 text-xs text-white/70 truncate">{tooltip.inv.title}</p>
             )}
           </div>
 
@@ -410,7 +414,7 @@ export default function Invoices() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Client</p>
-                <p className="mt-0.5 text-sm font-medium text-slate-800">{tooltip.inv.client?.name || tooltip.inv.clientId || "—"}</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800">{fullClientName(tooltip.inv.client) || tooltip.inv.clientId || "—"}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Project</p>
@@ -481,7 +485,7 @@ export default function Invoices() {
               <div>
                 <p className="mb-3 text-sm text-slate-600">
                   Amount: <span className="font-semibold text-slate-900">₹{(confirmModal.totalAmount || confirmModal.amount || 0).toLocaleString()}</span>
-                  &nbsp;· Client: <span className="font-semibold text-slate-900">{confirmModal.client?.name || confirmModal.clientId}</span>
+                  &nbsp;· Client: <span className="font-semibold text-slate-900">{fullClientName(confirmModal.client) || confirmModal.clientId}</span>
                 </p>
               </div>
 
@@ -611,28 +615,30 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* VOID CONFIRMATION MODAL */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
           <div className="w-full max-w-sm rounded-xl bg-white shadow-xl">
             <div className="p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
-                <Trash2 size={22} className="text-red-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 mb-4">
+                <Trash2 size={22} className="text-orange-600" />
               </div>
-              <h2 className="text-base font-semibold text-slate-800">Delete Invoice?</h2>
+              <h2 className="text-base font-semibold text-slate-800">Void Invoice?</h2>
               <p className="mt-1 text-sm text-slate-500">
                 <span className="font-medium text-slate-700">{deleteTarget.invoiceNumber || deleteTarget.id}</span>
                 {deleteTarget.title ? ` — ${deleteTarget.title}` : ""}
               </p>
-              <p className="mt-2 text-sm text-red-600">This action cannot be undone.</p>
+              <p className="mt-2 text-sm text-slate-500">
+                The invoice will be marked as <span className="font-semibold text-red-600">VOIDED</span> and shown with a strikethrough. It will not count in totals but remains visible for audit trail.
+              </p>
             </div>
             <div className="flex gap-3 border-t px-6 py-4">
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                className="flex-1 rounded-lg bg-orange-600 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-60"
               >
-                {deleting ? "Deleting..." : "Yes, Delete"}
+                {deleting ? "Voiding..." : "Yes, Void It"}
               </button>
               <button
                 onClick={() => setDeleteTarget(null)}
@@ -699,19 +705,18 @@ function Card({ title, value, green, yellow, blue }) {
 
 function StatusBadge({ status }) {
   const styles = {
-    PAID: "bg-green-100 text-green-700",
-    APPROVED: "bg-blue-100 text-blue-700",
-    PENDING: "bg-yellow-100 text-yellow-700",
-    OVERDUE: "bg-red-100 text-red-700",
+    PAID:      "bg-green-100 text-green-700",
+    PARTIAL:   "bg-amber-100 text-amber-700",
+    APPROVED:  "bg-blue-100 text-blue-700",
+    PENDING:   "bg-yellow-100 text-yellow-700",
+    OVERDUE:   "bg-red-100 text-red-700",
+    DRAFT:     "bg-slate-100 text-slate-600",
+    CANCELLED: "bg-red-50 text-red-400 line-through",
   };
 
   return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-        styles[status] || "bg-slate-100 text-slate-700"
-      }`}
-    >
-      {status}
+    <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${styles[status] || "bg-slate-100 text-slate-700"}`}>
+      {status === "CANCELLED" ? "VOIDED" : status}
     </span>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useMatch } from "react-router-dom";
-import { Search, X, ChevronDown, User, FolderKanban } from "lucide-react";
+import { Link, useMatch, useNavigate, useSearchParams } from "react-router-dom";
+import { Search, X, ChevronDown, User, FolderKanban, Lock, CheckCircle, Wallet, FilePlus } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../services/api/invoice.api";
 import { getClientsApi } from "../../services/api/client.api";
 import { getProjectsApi } from "../../services/api/project.api";
+import { fulfillInvoiceRequestApi } from "../../services/api/invoiceRequest.api";
 import { useAuth, useTenantPath } from "../../store/hooks";
 
 const initialForm = {
@@ -29,13 +30,22 @@ const initialForm = {
 
 export default function CreateInvoices() {
   const tp = useTenantPath();
+  const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const editMatch = useMatch("/tenant/:tenantId/invoices/edit/:id");
   const isEdit = Boolean(editMatch);
   const id = editMatch?.params?.id ?? null;
 
+  // Pre-fill when arriving from an approved client invoice request
+  const requestId        = searchParams.get("requestId");
+  const requestClientId  = searchParams.get("clientId");
+  const requestProjectId = searchParams.get("projectId");
+  const requestTitle     = searchParams.get("title");
+
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
+  const [createdInvoice, setCreatedInvoice] = useState(null);
 
   const [options, setOptions] = useState([]);
   const [selectedOption, setSelectedOption] = useState(null);
@@ -62,16 +72,18 @@ export default function CreateInvoices() {
         const clients  = clientRes.data  || [];
         const projects = projectRes.data || [];
 
-        // Group: [{ clientId, clientName, email, company, projects: [{id, name, code}] }]
-        const grouped = clients.map((c) => ({
-          clientId:   c.id,
-          clientName: c.name,
-          email:      c.email || "",
-          company:    c.company || "",
-          projects:   projects
-            .filter((p) => p.clientId === c.id)
-            .map((p) => ({ id: p.id, name: p.name, code: p.code || "" })),
-        }));
+        // Group: active clients only; exclude completed/cancelled projects
+        const grouped = clients
+          .filter((c) => c.status === "ACTIVE")
+          .map((c) => ({
+            clientId:   c.id,
+            clientName: c.name,
+            email:      c.email || "",
+            company:    c.company || "",
+            projects:   projects
+              .filter((p) => p.clientId === c.id && p.status !== "COMPLETED" && p.status !== "CANCELLED")
+              .map((p) => ({ id: p.id, name: p.name, code: p.code || "" })),
+          }));
         setOptions(grouped);
       } catch (err) {
         console.error("Failed to load options:", err);
@@ -105,9 +117,42 @@ export default function CreateInvoices() {
     load();
   }, [id, isEdit]);
 
+  /* ── PRE-FILL FROM AN INVOICE REQUEST ── */
+  useEffect(() => {
+    if (isEdit || !requestClientId || options.length === 0) return;
+    const clientOpt = options.find((o) => o.clientId === requestClientId);
+    if (!clientOpt) return;
+    const project = requestProjectId ? clientOpt.projects.find((p) => p.id === requestProjectId) : null;
+    setSelectedOption({
+      clientId:    clientOpt.clientId,
+      clientName:  clientOpt.clientName,
+      email:       clientOpt.email,
+      projectId:   project?.id   || "",
+      projectName: project?.name || "",
+      projectCode: project?.code || "",
+    });
+    setForm((prev) => ({
+      ...prev,
+      clientId:  clientOpt.clientId,
+      projectId: project?.id || "",
+      title:     requestTitle || prev.title,
+    }));
+  }, [requestClientId, requestProjectId, requestTitle, options, isEdit]);
+
   const onChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "dueDate" && next.issueDate && value && value < next.issueDate) {
+        toast.error("Due date cannot be before issue date");
+        return { ...prev, dueDate: "" };
+      }
+      if (name === "issueDate" && next.dueDate && value && next.dueDate < value) {
+        toast.error("Issue date is after due date — due date cleared");
+        return { ...prev, issueDate: value, dueDate: "" };
+      }
+      return next;
+    });
   };
 
   const handleSelect = (opt) => {
@@ -149,6 +194,20 @@ export default function CreateInvoices() {
 
   const onSubmit = async (e) => {
     e.preventDefault();
+
+    if (!form.clientId) { toast.error("Please select a client"); return; }
+
+    const titleVal = (form.title || "").trim();
+    if (!titleVal) { toast.error("Invoice title is required"); return; }
+    if (titleVal.length < 3) { toast.error("Invoice title must be at least 3 characters"); return; }
+
+    const amt = Number(form.amount);
+    if (!form.amount || isNaN(amt) || amt <= 0) { toast.error("Amount must be greater than 0"); return; }
+
+    if (!form.issueDate) { toast.error("Issue date is required"); return; }
+    if (!form.dueDate) { toast.error("Due date is required"); return; }
+    if (form.dueDate < form.issueDate) { toast.error("Due date cannot be before issue date"); return; }
+
     setLoading(true);
     try {
       const payload = {
@@ -165,8 +224,10 @@ export default function CreateInvoices() {
       } else {
         const res = await createInvoiceApi(payload);
         toast.success(`Invoice "${res.data.invoiceNumber || res.data.id}" created`);
-        setForm(initialForm);
-        setSelectedOption(null);
+        if (requestId) {
+          await fulfillInvoiceRequestApi(requestId, res.data.id).catch(() => {});
+        }
+        setCreatedInvoice(res.data);
       }
     } catch (err) {
       toast.error(err?.response?.data?.message || err.message || "Something went wrong");
@@ -174,6 +235,56 @@ export default function CreateInvoices() {
       setLoading(false);
     }
   };
+
+  /* ── SUCCESS PAGE ── */
+  if (createdInvoice) {
+    return (
+      <section className="flex h-[90dvh] items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-5">
+
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
+            <CheckCircle className="mx-auto mb-3 text-green-500" size={44} />
+            <h2 className="text-lg font-semibold text-slate-900">Invoice Created!</h2>
+            {createdInvoice.invoiceNumber && (
+              <span className="mt-2 inline-block rounded-full bg-indigo-100 px-3 py-1 text-xs font-mono font-semibold text-indigo-700">
+                {createdInvoice.invoiceNumber}
+              </span>
+            )}
+            <p className="mt-3 text-sm text-slate-600">
+              Amount:{" "}
+              <span className="font-semibold text-slate-800">
+                ₹{Number(createdInvoice.totalAmount || 0).toLocaleString("en-IN")}
+              </span>
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => navigate(tp(`/payments/create?invoiceId=${createdInvoice.id}`))}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <Wallet size={18} />
+              Record Payment for this Invoice
+            </button>
+            <button
+              onClick={() => { setCreatedInvoice(null); setForm(initialForm); setSelectedOption(null); }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <FilePlus size={18} />
+              Create Another Invoice
+            </button>
+            <Link
+              to={tp("/invoices")}
+              className="flex w-full items-center justify-center rounded-xl border border-slate-200 py-3 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              ← Back to Invoices
+            </Link>
+          </div>
+
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="h-[90dvh] overflow-y-auto space-y-6 pr-2 pb-10">
@@ -188,6 +299,16 @@ export default function CreateInvoices() {
         </div>
         <Link to={tp("/invoices")} className="text-sm text-indigo-600 hover:underline">← Back</Link>
       </div>
+
+      {/* PAID LOCK BANNER */}
+      {isEdit && form.status === "PAID" && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <Lock size={16} className="shrink-0 text-amber-600" />
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">Paid invoice</span> — amount, tax, and discount are locked. You can still update notes and dates.
+          </p>
+        </div>
+      )}
 
       {/* FORM */}
       <div className="rounded-2xl border bg-white shadow-sm">
@@ -225,7 +346,7 @@ export default function CreateInvoices() {
               />
             </div>
             <Input
-              label="Title"
+              label="Title *"
               name="title"
               value={form.title}
               onChange={onChange}
@@ -238,13 +359,14 @@ export default function CreateInvoices() {
             <h2 className="text-sm font-semibold text-slate-700">Amount Breakdown</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               <Input
-                label="Amount (₹)"
+                label="Amount (₹) *"
                 name="amount"
                 type="number"
                 min="0"
                 value={form.amount}
                 onChange={onChange}
                 placeholder="0.00"
+                disabled={isEdit && form.status === "PAID"}
               />
               <Input
                 label="Tax (₹)"
@@ -254,6 +376,7 @@ export default function CreateInvoices() {
                 value={form.tax}
                 onChange={onChange}
                 placeholder="0.00"
+                disabled={isEdit && form.status === "PAID"}
               />
               <Input
                 label="Discount (₹)"
@@ -262,6 +385,7 @@ export default function CreateInvoices() {
                 min="0"
                 value={form.discount}
                 onChange={onChange}
+                disabled={isEdit && form.status === "PAID"}
                 placeholder="0.00"
               />
             </div>
@@ -284,17 +408,18 @@ export default function CreateInvoices() {
             </Select>
             <Input
               type="date"
-              label="Issue Date"
+              label="Issue Date *"
               name="issueDate"
               value={form.issueDate}
               onChange={onChange}
             />
             <Input
               type="date"
-              label="Due Date"
+              label="Due Date *"
               name="dueDate"
               value={form.dueDate}
               onChange={onChange}
+              min={form.issueDate || undefined}
             />
           </div>
 
@@ -509,7 +634,7 @@ function Input({ label, ...props }) {
       <label className="text-xs font-medium text-slate-600">{label}</label>
       <input
         {...props}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+        className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none ${props.disabled ? "bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200" : "border-slate-300"}`}
       />
     </div>
   );

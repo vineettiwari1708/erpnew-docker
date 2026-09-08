@@ -146,7 +146,7 @@ export default function SystemSettings() {
                     }`} />
                     {status.charAt(0) + status.slice(1).toLowerCase()}
                   </span>
-                  <span className={`rounded-full px-3 py-0.5 text-xs font-bold ${
+                  <span className={`fp rounded-full px-3 py-0.5 text-xs font-bold ${
                     status === "ACTIVE"    ? "bg-emerald-50 text-emerald-700"
                     : status === "SUSPENDED" ? "bg-red-50 text-red-700"
                     : "bg-amber-50 text-amber-700"

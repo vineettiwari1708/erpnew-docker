@@ -105,7 +105,7 @@ export default function SystemDashboard() {
                   {/* CENTER STATUS */}
                   <div className="flex-1 flex justify-end">
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      className={`fp rounded-full px-3 py-1 text-xs font-semibold ${
                         isActive
                           ? "bg-green-100 text-green-700"
                           : "bg-slate-200 text-slate-700"

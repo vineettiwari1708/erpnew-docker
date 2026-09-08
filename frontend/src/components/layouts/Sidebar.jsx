@@ -11,6 +11,7 @@ import {
   ClipboardList,
   FileText,
   ShieldCheck,
+  Inbox,
 } from "lucide-react";
 import { NavLink, useParams } from "react-router-dom";
 import { useAuth } from "../../store/hooks";
@@ -21,9 +22,10 @@ export const menu = [
   { name: "Clients",    path: "/clients",    perm: "CLIENT_VIEW",    icon: Users },
   { name: "Projects",   path: "/projects",   perm: "PROJECT_VIEW",   icon: FolderKanban },
   { name: "Invoices",   path: "/invoices",   perm: "INVOICE_VIEW",   icon: Receipt },
+  { name: "Requests",   path: "/invoice-requests", perm: "INVOICE_VIEW", icon: Inbox },
   { name: "Payments",   path: "/payments",   perm: "PAYMENT_VIEW",   icon: Wallet },
-  { name: "Users",      path: "/users",      perm: "USER_MANAGE",    icon: Users },
   { name: "Ledger",     path: "/ledger",     perm: "LEDGER_VIEW",    icon: BookOpen },
+  { name: "Users",      path: "/users",      perm: "USER_MANAGE",    icon: Users },
   { name: "Roles",      path: "/roles",      perm: "ROLE_MANAGE",    icon: Shield },
   { name: "Audit Log",  path: "/audit",      perm: "ROLE_MANAGE",    icon: ClipboardList },
 ];
@@ -51,7 +53,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen, compact, setCompa
   const tenantId = urlTenantId ?? (user?.tenantSlug || user?.tenantId);
 
   const isSuperAdmin  = user?.role === "super_admin";
-  const isClientRole  = user?.role?.name === "CLIENT";
+  const isClientRole  = user?.role === "CLIENT";
   const rolePerms     = user?.permissions || [];
 
   const hasPermission = (perm) =>

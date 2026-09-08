@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useMatch } from "react-router-dom";
-import { Search, X, ChevronDown, User, FolderKanban, Upload, FileImage, FileText as FilePdf } from "lucide-react";
+import { Link, useMatch, useNavigate, useSearchParams } from "react-router-dom";
+import { Search, X, ChevronDown, User, FolderKanban, Upload, FileImage, FileText as FilePdf, CheckCircle, IndianRupee, Receipt } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -10,7 +10,7 @@ import {
 } from "../../services/api/payment.api";
 import { getClientsApi } from "../../services/api/client.api";
 import { getProjectsApi } from "../../services/api/project.api";
-import { getInvoicesApi } from "../../services/api/invoice.api";
+import { getInvoicesApi, getInvoiceByIdApi } from "../../services/api/invoice.api";
 import { useAuth, useTenantPath } from "../../store/hooks";
 
 const initialForm = {
@@ -27,13 +27,17 @@ const initialForm = {
 
 export default function CreatePayment() {
   const tp = useTenantPath();
+  const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const preInvoiceId = searchParams.get("invoiceId");
   const editMatch = useMatch("/tenant/:tenantId/payments/edit/:id");
   const isEdit = Boolean(editMatch);
   const id = editMatch?.params?.id ?? null;
 
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
+  const [createdPayment, setCreatedPayment] = useState(null);
 
   const [proofFile, setProofFile] = useState(null);
   const [proofPreview, setProofPreview] = useState(null);
@@ -44,6 +48,7 @@ export default function CreatePayment() {
   const [invoices, setInvoices] = useState([]);
 
   const tenantId = user?.tenantId;
+  const isClientRole = user?.role === "CLIENT";
 
   /* ── LOAD CLIENTS + PROJECTS FOR PICKER ── */
   useEffect(() => {
@@ -57,16 +62,18 @@ export default function CreatePayment() {
         const clients  = clientRes.data  || [];
         const projects = projectRes.data || [];
 
-        // Group: [{ clientId, clientName, email, company, projects:[{id,name,code}] }]
-        const grouped = clients.map((c) => ({
-          clientId:   c.id,
-          clientName: c.name,
-          email:      c.email || "",
-          company:    c.company || "",
-          projects:   projects
-            .filter((p) => p.clientId === c.id)
-            .map((p) => ({ id: p.id, name: p.name, code: p.code || "" })),
-        }));
+        // Group: active clients only; exclude completed/cancelled projects
+        const grouped = clients
+          .filter((c) => c.status === "ACTIVE")
+          .map((c) => ({
+            clientId:   c.id,
+            clientName: c.name,
+            email:      c.email || "",
+            company:    c.company || "",
+            projects:   projects
+              .filter((p) => p.clientId === c.id && p.status !== "COMPLETED" && p.status !== "CANCELLED")
+              .map((p) => ({ id: p.id, name: p.name, code: p.code || "" })),
+          }));
 
         setOptions(grouped);
       } catch (err) {
@@ -75,6 +82,50 @@ export default function CreatePayment() {
     }
     fetchOptions();
   }, [tenantId]);
+
+  /* ── PRE-FILL FROM ?invoiceId= URL PARAM ── */
+  useEffect(() => {
+    if (!preInvoiceId || isEdit || options.length === 0) return;
+    async function prefill() {
+      try {
+        const res = await getInvoiceByIdApi(preInvoiceId);
+        const inv = res.data;
+        if (!inv) return;
+
+        // Find matching client in options
+        const clientOpt = options.find((o) => o.clientId === inv.clientId);
+        if (clientOpt) {
+          setSelectedOption({
+            clientId:    clientOpt.clientId,
+            clientName:  clientOpt.clientName,
+            email:       clientOpt.email,
+            projectId:   inv.projectId || "",
+            projectName: clientOpt.projects.find((p) => p.id === inv.projectId)?.name || "",
+            projectCode: clientOpt.projects.find((p) => p.id === inv.projectId)?.code || "",
+          });
+          // Load all invoices for this client, then set selected invoice
+          const allRes = await getInvoicesApi(tenantId);
+          const clientInvs = (allRes.data || []).filter(
+            (i) => i.clientId === inv.clientId && !["PAID", "CANCELLED"].includes(i.status)
+          );
+          setInvoices(clientInvs);
+          const balance = Math.max(0, (inv.totalAmount || inv.amount || 0) - (inv.paidAmount || 0));
+          setForm((prev) => ({ ...prev, clientId: inv.clientId, invoiceId: inv.id, amount: String(balance) }));
+        }
+      } catch {
+        // ignore
+      }
+    }
+    prefill();
+  }, [preInvoiceId, isEdit, options, tenantId]);
+
+  /* ── CLIENT ROLE: auto-select their own single client (no picker needed) ── */
+  useEffect(() => {
+    if (!isClientRole || preInvoiceId || isEdit || selectedOption || options.length === 0) return;
+    const own = options[0];
+    if (own) handleSelect(own);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClientRole, preInvoiceId, isEdit, options]);
 
   /* ── LOAD FOR EDIT ── */
   useEffect(() => {
@@ -116,8 +167,8 @@ export default function CreatePayment() {
           all.filter(
             (inv) =>
               inv.clientId === opt.clientId &&
-              (!opt.projectId || inv.projectId === opt.projectId) &&
-              ["PENDING", "APPROVED"].includes(inv.status)
+              (!opt.projectId || !inv.projectId || inv.projectId === opt.projectId) &&
+              !["PAID", "CANCELLED"].includes(inv.status)
           )
         );
       }).catch(() => setInvoices([]));
@@ -133,10 +184,13 @@ export default function CreatePayment() {
   const handleInvoiceSelect = (e) => {
     const invId = e.target.value;
     const inv = invoices.find((i) => i.id === invId);
+    const balance = inv
+      ? Math.max(0, (inv.totalAmount || inv.amount || 0) - (inv.paidAmount || 0))
+      : 0;
     setForm((prev) => ({
       ...prev,
       invoiceId: invId,
-      amount: inv ? String(inv.totalAmount || inv.amount || "") : prev.amount,
+      amount: inv ? String(balance) : prev.amount,
     }));
   };
 
@@ -181,11 +235,7 @@ export default function CreatePayment() {
       } else {
         const res = await createPaymentApi(payload);
         toast.success(`Payment "${res.data.paymentNumber || res.data.id.slice(0,8)}" recorded`);
-        setForm(initialForm);
-        setSelectedOption(null);
-        setInvoices([]);
-        setProofFile(null);
-        setProofPreview(null);
+        setCreatedPayment({ ...res.data, clientName: selectedOption?.clientName });
       }
     } catch (err) {
       toast.error(err?.response?.data?.message || err.message || "Something went wrong");
@@ -194,6 +244,81 @@ export default function CreatePayment() {
     }
   };
 
+  /* ── SUCCESS PAGE ── */
+  if (createdPayment) {
+    const resetAll = () => {
+      setCreatedPayment(null);
+      setForm(initialForm);
+      setSelectedOption(null);
+      setInvoices([]);
+      setProofFile(null);
+      setProofPreview(null);
+    };
+    return (
+      <section className="flex h-[90dvh] items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-5">
+
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
+            <CheckCircle className="mx-auto mb-3 text-green-500" size={44} />
+            <h2 className="text-lg font-semibold text-slate-900">
+              {isClientRole ? "Payment Submitted!" : "Payment Recorded!"}
+            </h2>
+            {isClientRole && (
+              <p className="mt-1 text-sm text-slate-500">Awaiting approval from the team</p>
+            )}
+            {createdPayment.paymentNumber && (
+              <span className="mt-2 inline-block rounded-full bg-indigo-100 px-3 py-1 text-xs font-mono font-semibold text-indigo-700">
+                {createdPayment.paymentNumber}
+              </span>
+            )}
+            <div className="mt-3 space-y-1">
+              <p className="text-sm text-slate-600">
+                Amount:{" "}
+                <span className="font-semibold text-slate-800">
+                  ₹{Number(createdPayment.amount || 0).toLocaleString("en-IN")}
+                </span>
+              </p>
+              <p className="text-sm text-slate-500">
+                Method: <span className="font-medium text-slate-700">{createdPayment.method?.replace("_", " ")}</span>
+              </p>
+              {createdPayment.clientName && (
+                <p className="text-sm text-slate-500">
+                  Client: <span className="font-medium text-slate-700">{createdPayment.clientName}</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={resetAll}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <IndianRupee size={18} />
+              Record Another Payment
+            </button>
+            {!isClientRole && (
+              <button
+                onClick={() => navigate(tp(`/invoices/create`))}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <Receipt size={18} />
+                Create New Invoice
+              </button>
+            )}
+            <Link
+              to={tp(isClientRole ? "/payments/client" : "/payments")}
+              className="flex w-full items-center justify-center rounded-xl border border-slate-200 py-3 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              ← Back to Payments
+            </Link>
+          </div>
+
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="h-[90dvh] overflow-y-auto space-y-6 pr-2 pb-10">
 
@@ -201,27 +326,31 @@ export default function CreatePayment() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
-            {isEdit ? "Edit Payment" : "Record Payment"}
+            {isEdit ? "Edit Payment" : isClientRole ? "Submit Payment" : "Record Payment"}
           </h1>
-          <p className="text-sm text-slate-500">Manage payment details</p>
+          <p className="text-sm text-slate-500">
+            {isClientRole ? "Submit a payment for review" : "Manage payment details"}
+          </p>
         </div>
-        <Link to={tp("/payments")} className="text-sm text-indigo-600 hover:underline">← Back</Link>
+        <Link to={tp(isClientRole ? "/payments/client" : "/payments")} className="text-sm text-indigo-600 hover:underline">← Back</Link>
       </div>
 
       {/* FORM */}
       <div className="rounded-2xl border bg-white shadow-sm">
         <form onSubmit={onSubmit} className="space-y-6 p-6">
 
-          {/* CLIENT + PROJECT PICKER */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Client &amp; Project</label>
-            <CustomerPicker
-              options={options}
-              selected={selectedOption}
-              onSelect={handleSelect}
-              onClear={handleClear}
-            />
-          </div>
+          {/* CLIENT + PROJECT PICKER — hidden for CLIENT role, they only have themselves */}
+          {!isClientRole && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Client &amp; Project</label>
+              <CustomerPicker
+                options={options}
+                selected={selectedOption}
+                onSelect={handleSelect}
+                onClear={handleClear}
+              />
+            </div>
+          )}
 
           {/* INVOICE SELECTOR — shown after client is picked */}
           {selectedOption && (
@@ -231,7 +360,7 @@ export default function CreatePayment() {
               </label>
               {invoices.length === 0 ? (
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-400">
-                  No pending or approved invoices for this client
+                  No unpaid invoices for this client
                 </p>
               ) : (
                 <select
@@ -241,11 +370,17 @@ export default function CreatePayment() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
                 >
                   <option value="">— Select invoice —</option>
-                  {invoices.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber || inv.id} · ₹{Number(inv.totalAmount || inv.amount || 0).toLocaleString("en-IN")} · {inv.status}
-                    </option>
-                  ))}
+                  {invoices.map((inv) => {
+                    const total   = Number(inv.totalAmount || inv.amount || 0);
+                    const paid    = Number(inv.paidAmount  || 0);
+                    const balance = Math.max(0, total - paid);
+                    return (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.invoiceNumber || inv.id} · ₹{total.toLocaleString("en-IN")}
+                        {paid > 0 ? ` · Bal ₹${balance.toLocaleString("en-IN")}` : ""} · {inv.status}
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </div>
@@ -272,11 +407,20 @@ export default function CreatePayment() {
               <option value="CHEQUE">CHEQUE</option>
             </Select>
 
-            <Select label="Status" name="status" value={form.status} onChange={onChange}>
-              <option value="SUCCESS">SUCCESS</option>
-              <option value="PENDING">PENDING</option>
-              <option value="REJECTED">REJECTED</option>
-            </Select>
+            {isClientRole ? (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600">Status</label>
+                <div className="flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  Submitted for review
+                </div>
+              </div>
+            ) : (
+              <Select label="Status" name="status" value={form.status} onChange={onChange}>
+                <option value="SUCCESS">SUCCESS</option>
+                <option value="PENDING">PENDING</option>
+                <option value="REJECTED">REJECTED</option>
+              </Select>
+            )}
 
             <Input
               type="date"
@@ -386,7 +530,7 @@ export default function CreatePayment() {
             disabled={loading}
             className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
           >
-            {loading ? "Saving..." : isEdit ? "Update Payment" : "Record Payment"}
+            {loading ? "Saving..." : isEdit ? "Update Payment" : isClientRole ? "Submit Payment" : "Record Payment"}
           </button>
 
 
@@ -519,8 +663,13 @@ function CustomerPicker({ options, selected, onSelect, onClear }) {
               {filtered.map((c) => (
                 <li key={c.clientId} className="border-b border-slate-100 last:border-0">
 
-                  {/* ── CLIENT HEADER ── */}
-                  <div className="flex items-center gap-3 bg-slate-50 px-4 py-2.5">
+                  {/* ── CLIENT HEADER — clickable to select client without project ── */}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pick(c, null)}
+                    className="flex w-full items-center gap-3 bg-slate-50 px-4 py-2.5 text-left hover:bg-indigo-50 transition-colors"
+                  >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
                       {c.clientName.charAt(0)}
                     </div>
@@ -531,12 +680,10 @@ function CustomerPicker({ options, selected, onSelect, onClear }) {
                     <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-600">
                       {c.projects.length} project{c.projects.length !== 1 ? "s" : ""}
                     </span>
-                  </div>
+                  </button>
 
                   {/* ── PROJECT ROWS ── */}
-                  {c.projects.length === 0 ? (
-                    <div className="px-6 py-2 text-xs text-slate-400 italic">No projects</div>
-                  ) : (
+                  {c.projects.length > 0 && (
                     <ul>
                       {c.projects.map((p) => (
                         <li key={p.id}>

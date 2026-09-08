@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "../../store/hooks";
 import { clearTenantProfileCache } from "../../store/hooks";
 import { getTenantProfileApi, updateTenantProfileApi } from "../../services/api/client.api";
+import AddressFields from "../../components/AddressFields";
 
 export default function CompanySettings() {
   const { user } = useAuth();
@@ -203,15 +204,10 @@ export default function CompanySettings() {
         {/* ADDRESS */}
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-base font-semibold text-slate-800">Address</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Field label="Street / Line 1" value={form.line1} onChange={set("line1")} placeholder="123 MG Road" />
-            </div>
-            <Field label="City"    value={form.city}    onChange={set("city")}    placeholder="Bengaluru" />
-            <Field label="State"   value={form.state}   onChange={set("state")}   placeholder="Karnataka" />
-            <Field label="Country" value={form.country} onChange={set("country")} placeholder="India" />
-            <Field label="Pincode" value={form.pincode} onChange={set("pincode")} placeholder="560001" />
-          </div>
+          <AddressFields
+            address={{ line1: form.line1, state: form.state, city: form.city, pincode: form.pincode }}
+            onChange={(field, value) => setForm((prev) => ({ ...prev, [field]: value }))}
+          />
         </div>
 
         {/* SUBMIT */}

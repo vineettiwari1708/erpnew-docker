@@ -7,6 +7,7 @@ const CLIENT_ALLOWED_PATHS = [
   "/dashboard",
   "/invoices/client",
   "/payments/client",
+  "/payments/create",
   "/projects",
   "/my-profile",
   "/statement",
@@ -23,7 +24,7 @@ export default function ProtectedRoute({ children, systemOnly = false, permissio
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
 
   const isSuperAdmin = user?.role === "super_admin";
-  const isClient     = user?.role?.name === "CLIENT";
+  const isClient     = user?.role === "CLIENT";
 
   if (systemOnly && !isSuperAdmin) return <Navigate to="/unauthorized" replace />;
 

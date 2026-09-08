@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, Archive, ArchiveRestore } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { deleteProjectApi, getProjectsApi, updateProjectApi } from "../../services/api/project.api";
 import { useAuth, useTenantPath, useHasPermission } from "../../store/hooks";
 import { fmtDate } from "../../utils/formatDate";
+import { fullClientName } from "../../utils/clientName";
 
 const STATUS_CLS = {
   ACTIVE:    "bg-green-100 text-green-700",
@@ -32,18 +33,24 @@ export default function Projects() {
   const tenantId = user?.tenantId;
   const isClient = user?.role === "CLIENT";
 
-  const [projects, setProjects] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [tooltip,  setTooltip]  = useState(null);
-  const [search,   setSearch]   = useState("");
-  const [acting,   setActing]   = useState(null);       // projectId being acted on
-  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
-  const [deleting, setDeleting] = useState(false);
+  const [projects, setProjects]   = useState([]);
+  const [loading,  setLoading]    = useState(true);
+  const [tooltip,  setTooltip]    = useState(null);
+  const [search,   setSearch]     = useState("");
+  const [acting,   setActing]     = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting]   = useState(false);
+
+  const ARCHIVED_STATUSES = ["COMPLETED", "CANCELLED"];
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return projects;
-    return projects.filter((p) =>
+    const byArchive = showArchived
+      ? projects.filter((p) => ARCHIVED_STATUSES.includes(p.status))
+      : projects.filter((p) => !ARCHIVED_STATUSES.includes(p.status));
+    if (!q) return byArchive;
+    return byArchive.filter((p) =>
       (p.name         || "").toLowerCase().includes(q) ||
       (p.code         || "").toLowerCase().includes(q) ||
       (p.status       || "").toLowerCase().includes(q) ||
@@ -51,7 +58,7 @@ export default function Projects() {
       (p.type         || "").toLowerCase().includes(q) ||
       (p.client?.name || "").toLowerCase().includes(q)
     );
-  }, [projects, search]);
+  }, [projects, search, showArchived]);
 
   /* ── FETCH ── */
   useEffect(() => {
@@ -63,10 +70,10 @@ export default function Projects() {
       .finally(() => setLoading(false));
   }, [tenantId]);
 
-  /* ── DISABLE / ENABLE project ── */
+  /* ── ARCHIVE / UNARCHIVE project (via CANCELLED ↔ ACTIVE status) ── */
   const handleToggleStatus = async (p) => {
-    const newStatus = p.status === "CANCELLED" ? "ACTIVE" : "CANCELLED";
-    const label     = newStatus === "CANCELLED" ? "disabled" : "re-enabled";
+    const newStatus = ARCHIVED_STATUSES.includes(p.status) ? "ACTIVE" : "CANCELLED";
+    const label     = newStatus === "CANCELLED" ? "archived" : "unarchived";
     setActing(p.id);
     try {
       const res = await updateProjectApi(p.id, { tenantId, status: newStatus });
@@ -129,18 +136,22 @@ export default function Projects() {
           </button>
         )}
 
-        {/* Disable / Enable — when project has invoices */}
+        {/* Archive / Unarchive — when project has invoices */}
         {canEdit && hasInvoices && (
           <button
             onClick={() => handleToggleStatus(project)}
             disabled={busy}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60 ${
-              project.status === "CANCELLED"
+            className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60 ${
+              ARCHIVED_STATUSES.includes(project.status)
                 ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                 : "bg-amber-50 text-amber-700 hover:bg-amber-100"
             }`}
           >
-            {busy ? "..." : project.status === "CANCELLED" ? "Enable" : "Disable"}
+            {!busy && (ARCHIVED_STATUSES.includes(project.status)
+              ? <ArchiveRestore size={13} />
+              : <Archive size={13} />
+            )}
+            {busy ? "..." : ARCHIVED_STATUSES.includes(project.status) ? "Unarchive" : "Archive"}
           </button>
         )}
       </div>
@@ -178,14 +189,29 @@ export default function Projects() {
           {isClient ? "Your active projects" : "Manage all projects"}
         </p>
       </div>
-      {canCreate && (
-        <Link
-          to={tp("/projects/create")}
-          className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-        >
-          + New Project
-        </Link>
-      )}
+      <div className="flex items-center gap-3">
+        {!isClient && (
+          <button
+            onClick={() => { setShowArchived((v) => !v); setSearch(""); }}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition ${
+              showArchived
+                ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {showArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+            {showArchived ? "Active Projects" : "Archived"}
+          </button>
+        )}
+        {canCreate && !showArchived && (
+          <Link
+            to={tp("/projects/create")}
+            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+          >
+            + New Project
+          </Link>
+        )}
+      </div>
     </div>
   );
 
@@ -208,13 +234,13 @@ export default function Projects() {
                     <h2 className="text-lg font-semibold text-slate-800">{project.name}</h2>
                     {project.code && <p className="text-xs text-slate-400">{project.code}</p>}
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_CLS[project.status] || "bg-slate-100 text-slate-700"}`}>
+                  <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${STATUS_CLS[project.status] || "bg-slate-100 text-slate-700"}`}>
                     {project.status}
                   </span>
                 </div>
                 <div className="space-y-1.5 text-sm">
                   {project.client?.name && (
-                    <p><span className="font-medium text-slate-500">Client:</span> {project.client.name}</p>
+                    <p><span className="font-medium text-slate-500">Client:</span> {fullClientName(project.client)}</p>
                   )}
                   <p><span className="font-medium text-slate-500">Budget:</span> ₹{Number(project.budget || 0).toLocaleString("en-IN")}</p>
                   <p><span className="font-medium text-slate-500">Spent:</span> ₹{Number(project.spent || 0).toLocaleString("en-IN")}</p>
@@ -241,6 +267,14 @@ export default function Projects() {
   return (
     <section className="h-[90dvh] overflow-y-auto space-y-6 pr-2 pb-10">
       {header}
+
+      {showArchived && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Archive size={16} className="shrink-0 text-amber-600" />
+          Showing archived projects (Completed &amp; Cancelled) — hidden from active list.
+        </div>
+      )}
+
       {searchBar}
 
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -248,15 +282,13 @@ export default function Projects() {
           <div className="p-10 text-center text-sm text-slate-500">No projects found</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[780px] w-full text-sm">
+            <table className="min-w-[640px] w-full text-sm">
               <thead className="border-b bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Project</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Client</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Priority</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Budget</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Spent</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Budget</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">End Date</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
                 </tr>
@@ -294,34 +326,30 @@ export default function Projects() {
                     {/* CLIENT */}
                     <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
                       {project.client?.name
-                        ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{project.client.name}</span>
+                        ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{fullClientName(project.client)}</span>
                         : <span className="text-slate-300">—</span>}
                     </td>
 
-                    {/* STATUS */}
+                    {/* STATUS + PRIORITY */}
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLS[project.status] || "bg-slate-100 text-slate-700"}`}>
-                        {project.status}
-                      </span>
-                    </td>
-
-                    {/* PRIORITY */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {project.priority ? (
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_CLS[project.priority] || "bg-slate-100 text-slate-600"}`}>
-                          {project.priority}
+                      <div className="flex flex-col gap-1">
+                        <span className={`fp rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLS[project.status] || "bg-slate-100 text-slate-700"}`}>
+                          {project.status}
                         </span>
-                      ) : <span className="text-slate-300">—</span>}
+                        {project.priority ? (
+                          <span className={`fp rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_CLS[project.priority] || "bg-slate-100 text-slate-600"}`}>
+                            {project.priority}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
 
-                    {/* BUDGET */}
-                    <td className="px-4 py-3 text-sm font-medium text-slate-800 whitespace-nowrap">
-                      ₹{Number(project.budget || 0).toLocaleString("en-IN")}
-                    </td>
-
-                    {/* SPENT */}
-                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                      ₹{Number(project.spent || 0).toLocaleString("en-IN")}
+                    {/* BUDGET + SPENT */}
+                    <td className="px-4 py-3 whitespace-nowrap cursor-default">
+                      <div className="group flex flex-col gap-0.5 transition-transform duration-200 hover:scale-[1.12] origin-left">
+                        <span className="text-sm font-semibold text-slate-800 group-hover:text-slate-900 transition-colors duration-200">₹{Number(project.budget || 0).toLocaleString("en-IN")}</span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-600 transition-colors duration-200"><span className="font-medium text-slate-500 group-hover:text-slate-700">Spent</span> ₹{Number(project.spent || 0).toLocaleString("en-IN")}</span>
+                      </div>
                     </td>
 
                     {/* END DATE */}
@@ -346,31 +374,37 @@ export default function Projects() {
       {tooltip && (
         <div
           className="pointer-events-none fixed z-[999] w-72 rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{ left: tooltip.x + 14, top: tooltip.y, transform: "translateY(-50%)" }}
+          style={{ left: tooltip.x + 14, top: Math.max(140, Math.min(tooltip.y, window.innerHeight - 140)), transform: "translateY(-50%)" }}
         >
-          <div className="rounded-t-2xl bg-violet-600 px-4 py-3">
+          <div className={`rounded-t-2xl px-4 py-3 ${{
+            ACTIVE:    "bg-blue-600",
+            PLANNING:  "bg-slate-500",
+            COMPLETED: "bg-green-600",
+            ON_HOLD:   "bg-yellow-500",
+            CANCELLED: "bg-red-500",
+          }[tooltip.project.status] || "bg-violet-600"}`}>
             <p className="text-sm font-bold text-white">{tooltip.project.name}</p>
             {tooltip.project.code && (
-              <p className="text-[10px] font-mono text-violet-200 mt-0.5">{tooltip.project.code}</p>
+              <p className="text-[10px] font-mono text-white/60 mt-0.5">{tooltip.project.code}</p>
             )}
             {tooltip.project.client?.name && (
               <p className="mt-1 text-[11px] text-violet-200">
-                Client: <span className="font-semibold text-white">{tooltip.project.client.name}</span>
+                Client: <span className="font-semibold text-white">{fullClientName(tooltip.project.client)}</span>
               </p>
             )}
           </div>
           <div className="p-4 space-y-3">
             <div className="flex gap-2 flex-wrap">
-              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLS[tooltip.project.status] || "bg-slate-100 text-slate-700"}`}>
+              <span className={`fp rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLS[tooltip.project.status] || "bg-slate-100 text-slate-700"}`}>
                 {tooltip.project.status}
               </span>
               {tooltip.project.priority && (
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_CLS[tooltip.project.priority] || "bg-slate-100 text-slate-600"}`}>
+                <span className={`fp rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_CLS[tooltip.project.priority] || "bg-slate-100 text-slate-600"}`}>
                   {tooltip.project.priority}
                 </span>
               )}
               {tooltip.project.type && (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                <span className="fp rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
                   {tooltip.project.type}
                 </span>
               )}

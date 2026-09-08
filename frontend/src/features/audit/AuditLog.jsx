@@ -42,10 +42,18 @@ const FIELD_LABELS = {
   portalEmail:   "Portal Email",
   method:        "Payment Method",
   transactionId: "Transaction ID",
+  paidAmount:    "Paid Amount",
 };
 
-const CURRENCY_FIELDS = new Set(["amount", "tax", "discount", "totalAmount"]);
+const CURRENCY_FIELDS = new Set(["amount", "tax", "discount", "totalAmount", "paidAmount"]);
 const DATE_FIELDS     = new Set(["dueDate", "issueDate", "paidAt"]);
+
+// Raw FK / internal fields — never useful to show as-is
+const SKIP_FIELDS = new Set([
+  "clientId", "projectId", "tenantId", "invoiceId",
+  "submittedById", "confirmedById", "createdBy", "approvedBy",
+  "roleId", "isDeleted", "deletedAt", "id",
+]);
 
 const ENTITIES = ["All", "Invoice", "Payment", "Client", "User"];
 
@@ -69,7 +77,12 @@ function getDiff(before, after) {
   const a = after  || {};
   const keys = new Set([...Object.keys(b), ...Object.keys(a)]);
   return [...keys]
-    .filter((k) => !k.startsWith("__") && String(b[k] ?? "") !== String(a[k] ?? ""))
+    .filter((k) =>
+      !k.startsWith("__") &&
+      !SKIP_FIELDS.has(k) &&
+      FIELD_LABELS[k] !== undefined &&           // only show known, labelled fields
+      String(b[k] ?? "") !== String(a[k] ?? "")
+    )
     .map((k) => ({ key: k, before: b[k], after: a[k] }));
 }
 
@@ -117,7 +130,7 @@ function LogRow({ log }) {
         </span>
 
         {/* Action badge */}
-        <span className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${color}`}>
+        <span className={`fp mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${color}`}>
           {log.action}
         </span>
 

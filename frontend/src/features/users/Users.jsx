@@ -132,16 +132,14 @@ export default function Users() {
 
       {/* TABLE */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="max-h-[calc(95vh-220px)] overflow-y-auto">
+        <div className="max-h-[calc(95vh-220px)] overflow-auto">
           <div className="overflow-x-auto">
-            <table className="min-w-[680px] w-full text-sm">
+            <table className="min-w-[440px] w-full text-sm">
 
               <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">User</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-500">Email</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">Role</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-500">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">Actions</th>
                 </tr>
               </thead>
@@ -149,11 +147,11 @@ export default function Users() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="px-4 py-10 text-center text-slate-500">Loading users...</td>
+                    <td colSpan="3" className="px-4 py-10 text-center text-slate-500">Loading users...</td>
                   </tr>
                 ) : fetchError ? (
                   <tr>
-                    <td colSpan="5" className="px-4 py-10 text-center text-rose-500">{fetchError}</td>
+                    <td colSpan="3" className="px-4 py-10 text-center text-rose-500">{fetchError}</td>
                   </tr>
                 ) : paginatedUsers.length > 0 ? (
                   paginatedUsers.map((u) => (
@@ -176,28 +174,23 @@ export default function Users() {
                             <Link to={tp(`/users/${u.id}`)} className="font-medium text-slate-800 hover:text-indigo-600">
                               {u.name}
                             </Link>
-                            <p className="text-xs text-slate-400">{u.userNumber || u.id}</p>
+                            <p className="text-xs text-slate-400">{u.email || u.userNumber || u.id}</p>
                           </div>
                         </div>
                       </td>
 
-                      {/* EMAIL */}
-                      <td className="px-4 py-4 text-slate-600">{u.email || "N/A"}</td>
-
-                      {/* ROLE */}
+                      {/* ROLE + STATUS */}
                       <td className="px-4 py-4">
-                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-                          {u.role?.name ?? u.role}
-                        </span>
-                      </td>
-
-                      {/* STATUS */}
-                      <td className="px-4 py-4">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          u.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                        }`}>
-                          {u.status || "ACTIVE"}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="fp rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 w-fit">
+                            {u.role?.name ?? u.role}
+                          </span>
+                          <span className={`fp rounded-full px-3 py-1 text-xs font-semibold w-fit ${
+                            u.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          }`}>
+                            {u.status || "ACTIVE"}
+                          </span>
+                        </div>
                       </td>
 
                       {/* ACTIONS */}
@@ -243,7 +236,7 @@ export default function Users() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="5" className="px-4 py-10 text-center text-slate-500">No users found</td>
+                    <td colSpan="3" className="px-4 py-10 text-center text-slate-500">No users found</td>
                   </tr>
                 )}
               </tbody>
@@ -340,15 +333,19 @@ export default function Users() {
       {tooltip && (
         <div
           className="pointer-events-none fixed z-[999] w-64 rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{ left: tooltip.x + 14, top: tooltip.y, transform: "translateY(-50%)" }}
+          style={{ left: tooltip.x + 14, top: Math.max(120, Math.min(tooltip.y, window.innerHeight - 120)), transform: "translateY(-50%)" }}
         >
-          <div className="rounded-t-2xl bg-indigo-600 px-4 py-3 flex items-center gap-3">
+          <div className={`rounded-t-2xl px-4 py-3 flex items-center gap-3 ${{
+            ACTIVE:    "bg-indigo-600",
+            INACTIVE:  "bg-slate-400",
+            SUSPENDED: "bg-red-500",
+          }[tooltip.u.status] || "bg-indigo-600"}`}>
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold text-white">
               {tooltip.u.name?.charAt(0)}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold text-white truncate">{tooltip.u.name}</p>
-              <p className="text-[10px] text-indigo-200 font-mono truncate">{tooltip.u.userNumber || tooltip.u.id}</p>
+              <p className="text-[10px] text-white/70 font-mono truncate">{tooltip.u.userNumber || tooltip.u.id}</p>
             </div>
           </div>
           <div className="p-4 space-y-2">
@@ -357,10 +354,10 @@ export default function Users() {
               <p className="text-sm text-slate-700 truncate">{tooltip.u.email || "—"}</p>
             </div>
             <div className="flex gap-2 pt-1">
-              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+              <span className="fp rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                 {tooltip.u.role?.name ?? tooltip.u.role ?? "—"}
               </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${
                 tooltip.u.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
               }`}>
                 {tooltip.u.status || "ACTIVE"}

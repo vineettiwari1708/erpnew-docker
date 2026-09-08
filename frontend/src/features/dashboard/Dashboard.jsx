@@ -14,7 +14,7 @@ export default function Dashboard() {
 
   const isSuperAdmin = user?.role === "super_admin";
 
-  const isClient = user?.role?.name === "CLIENT";
+  const isClient = user?.role === "CLIENT";
 
   const canViewProjects = useHasPermission("PROJECT_VIEW");
   const canCreateProject = useHasPermission("PROJECT_CREATE");
@@ -210,7 +210,7 @@ export default function Dashboard() {
                       </div>
 
                       <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        className={`fp rounded-full px-3 py-1 text-xs font-semibold ${
                           project.status === "ACTIVE"
                             ? "bg-green-100 text-green-700"
                             : project.status === "PLANNING"
@@ -268,7 +268,7 @@ export default function Dashboard() {
                     </div>
 
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      className={`fp rounded-full px-3 py-1 text-xs font-semibold ${
                         invoice.status === "PAID"     ? "bg-green-100 text-green-700"
                         : invoice.status === "APPROVED" ? "bg-blue-100 text-blue-700"
                         : invoice.status === "PENDING"  ? "bg-yellow-100 text-yellow-700"

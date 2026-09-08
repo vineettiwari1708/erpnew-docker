@@ -1,0 +1,62 @@
+name: erpnew
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    container_name: erpnew-db
+    environment:
+      POSTGRES_DB: saas_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "123456"
+    volumes:
+      - erpnew_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d saas_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - erpnew-net
+
+  backend:
+    image: erpnew-backend:latest
+    container_name: erpnew-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:123456@db:5432/saas_db
+      JWT_SECRET: "Secret@246"
+      JWT_EXPIRES: "7d"
+      NODE_ENV: production
+      SUPER_ADMIN_NAME: "Sachin"
+      SUPER_ADMIN_EMAIL: "sachin@urbanfeat.com"
+      SUPER_ADMIN_PASSWORD: "Sachin"
+      IMAGEKIT_PUBLIC_KEY: "public_8PtMzlF5X6URcDiiikLV9/C7dBg="
+      IMAGEKIT_PRIVATE_KEY: "private_7AzuCg/bwU7uUqGskUqKPRZAeMU="
+      IMAGEKIT_URL_ENDPOINT: "https://ik.imagekit.io/2p13z55t2"
+    ports:
+      - "5001:5001"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - erpnew-net
+
+  frontend:
+    image: erpnew-frontend:latest
+    container_name: erpnew-frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - erpnew-net
+
+networks:
+  erpnew-net:
+    driver: bridge
+
+volumes:
+  erpnew_db_data:

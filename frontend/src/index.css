@@ -3,6 +3,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fading-pill: left side keeps the rounded cap, right side dissolves to transparent.
+   Add class "fp" to any status badge alongside its existing rounded-full + color classes. */
+.fp {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-right: 1.75rem;
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 22px), transparent 100%);
+          mask-image: linear-gradient(to right, black calc(100% - 22px), transparent 100%);
+}
+
 *{
      font-family: "Manrope", sans-serif;
      font-weight: 500;

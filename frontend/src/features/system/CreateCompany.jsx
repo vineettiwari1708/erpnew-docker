@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { CheckCircle, Copy } from "lucide-react";
+import AddressFields from "../../components/AddressFields";
 import {
   createTenantApi,
   getTenantByIdApi,
@@ -309,14 +310,12 @@ export default function CreateCompany() {
           {/* ADDRESS */}
           <div className="rounded-xl border bg-slate-50 p-4">
             <h2 className="mb-4 text-sm font-semibold text-slate-700">Address</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Input label="Address Line" name="line1" value={form.address.line1} onChange={onAddressChange} placeholder="Tech Park Phase 1" />
-              </div>
-              <Input label="City" name="city" value={form.address.city} onChange={onAddressChange} placeholder="Mumbai" />
-              <Input label="State" name="state" value={form.address.state} onChange={onAddressChange} placeholder="Maharashtra" />
-              <Input label="Pincode" name="pincode" value={form.address.pincode} onChange={onAddressChange} placeholder="400001" error={fieldErrors.pincode} />
-            </div>
+            <AddressFields
+              address={form.address}
+              onChange={(field, value) =>
+                setForm((prev) => ({ ...prev, address: { ...prev.address, [field]: value } }))
+              }
+            />
           </div>
 
           {/* DESCRIPTION */}

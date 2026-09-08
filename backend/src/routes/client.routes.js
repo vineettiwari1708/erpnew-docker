@@ -23,9 +23,10 @@ router.get("/", async (req, res) => {
       return res.json(own ? [own] : []);
     }
 
-    const { status } = req.query;
+    const { status, archived } = req.query;
+    const showArchived = archived === "true";
     const clients = await prisma.client.findMany({
-      where:   { tenantId, isDeleted: false, ...(status && { status }) },
+      where:   { tenantId, isDeleted: false, isArchived: showArchived, ...(status && { status }) },
       include: { _count: { select: { invoices: true, payments: true, projects: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -53,7 +54,27 @@ router.get("/:id", async (req, res) => {
       select: { id: true, email: true },
     });
 
-    res.json({ ...client, portalUser: portalUser || null });
+    // Financial summary
+    const invoices = await prisma.invoice.findMany({
+      where:  { clientId: id, tenantId, isDeleted: false, status: { not: "CANCELLED" } },
+      select: {
+        id: true, totalAmount: true, status: true, dueDate: true,
+        payments: { where: { isDeleted: false, status: "SUCCESS" }, select: { amount: true } },
+      },
+    });
+    const totalBilled   = invoices.reduce((s, inv) => s + (inv.totalAmount || 0), 0);
+    const totalPaid     = invoices.flatMap((i) => i.payments).reduce((s, p) => s + (p.amount || 0), 0);
+    const outstanding   = totalBilled - totalPaid;
+    const invoiceCount  = invoices.length;
+    const paidCount     = invoices.filter((i) => i.status === "PAID").length;
+    const overdueCount  = invoices.filter((i) => i.status === "OVERDUE").length;
+    const draftCount    = invoices.filter((i) => i.status === "DRAFT").length;
+
+    res.json({
+      ...client,
+      portalUser: portalUser || null,
+      financials: { totalBilled, totalPaid, outstanding, invoiceCount, paidCount, overdueCount, draftCount },
+    });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch client", error: err.message });
   }
@@ -65,7 +86,7 @@ router.post("/", async (req, res) => {
 
   const { tenantId } = req.params;
   const {
-    name, email, phone, company, website, gstNumber, industry, description, address, createdBy,
+    prefix, name, email, phone, company, website, gstNumber, industry, description, address, createdBy,
     portalEmail, portalPassword,
   } = req.body;
 
@@ -88,7 +109,7 @@ router.post("/", async (req, res) => {
 
       const { client } = await prisma.$transaction(async (tx) => {
         const client = await tx.client.create({
-          data: { tenantId, name, email, phone, company, website, gstNumber, industry, description, address, createdBy, clientNumber },
+          data: { tenantId, prefix, name, email, phone, company, website, gstNumber, industry, description, address, createdBy, clientNumber },
         });
         await tx.user.create({
           data: {
@@ -113,7 +134,7 @@ router.post("/", async (req, res) => {
 
     const clientNumber = await genClientNumber(tenantId, name);
     const client = await prisma.client.create({
-      data: { tenantId, name, email, phone, company, website, gstNumber, industry, description, address, createdBy, clientNumber },
+      data: { tenantId, prefix, name, email, phone, company, website, gstNumber, industry, description, address, createdBy, clientNumber },
     });
 
     await audit(prisma, { tenantId, userId: req.user?.id, action: "CREATE", entity: "Client", entityId: client.id, entityName: name, after: { email, clientNumber }, req });
@@ -130,7 +151,7 @@ router.put("/:id", async (req, res) => {
   if (isClient(req)) return res.status(403).json({ message: "Access denied" });
 
   const { tenantId, id } = req.params;
-  const { name, email, phone, company, website, gstNumber, industry, description, address, status } = req.body;
+  const { prefix, name, email, phone, company, website, gstNumber, industry, description, address, status } = req.body;
 
   try {
     const existing = await prisma.client.findFirst({ where: { id, tenantId, isDeleted: false } });
@@ -138,7 +159,7 @@ router.put("/:id", async (req, res) => {
 
     const client = await prisma.client.update({
       where: { id },
-      data:  { name, email, phone, company, website, gstNumber, industry, description, address, status, updatedAt: new Date() },
+      data:  { prefix, name, email, phone, company, website, gstNumber, industry, description, address, status, updatedAt: new Date() },
     });
 
     await audit(prisma, {
@@ -238,11 +259,11 @@ router.get("/:id/statement", async (req, res) => {
   try {
     const client = await prisma.client.findFirst({
       where:  { id, tenantId, isDeleted: false },
-      select: { id: true, name: true, email: true, phone: true, company: true, address: true },
+      select: { id: true, prefix: true, name: true, email: true, phone: true, company: true, address: true },
     });
     if (!client) return res.status(404).json({ message: "Client not found" });
 
-    const invoices = await prisma.invoice.findMany({
+    const allInvoices = await prisma.invoice.findMany({
       where:   { tenantId, clientId: id, isDeleted: false },
       include: {
         project:  { select: { id: true, name: true } },
@@ -254,23 +275,62 @@ router.get("/:id/statement", async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    const totalBilled = invoices.reduce((s, inv) => s + (inv.totalAmount || 0), 0);
-    const totalPaid   = invoices.flatMap((inv) => inv.payments).reduce((s, p) => s + (p.amount || 0), 0);
+    // Active = exclude CANCELLED/voided invoices from financial summary
+    const activeInvoices = allInvoices.filter((inv) => inv.status !== "CANCELLED");
+
+    const totalBilled = activeInvoices.reduce((s, inv) => s + (inv.totalAmount || 0), 0);
+    const totalPaid   = activeInvoices.flatMap((inv) => inv.payments).reduce((s, p) => s + (p.amount || 0), 0);
 
     res.json({
       client,
-      invoices,
+      invoices: allInvoices, // send all (including voided) so UI can show strikethrough
       summary: {
         totalBilled,
         totalPaid,
         outstanding:  totalBilled - totalPaid,
-        invoiceCount: invoices.length,
-        paidCount:    invoices.filter((inv) => inv.status === "PAID").length,
-        overdueCount: invoices.filter((inv) => inv.status === "OVERDUE").length,
+        invoiceCount: activeInvoices.length,
+        paidCount:    activeInvoices.filter((inv) => inv.status === "PAID").length,
+        overdueCount: activeInvoices.filter((inv) => inv.status === "OVERDUE").length,
       },
     });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch statement", error: err.message });
+  }
+});
+
+/* ── PATCH archive / unarchive client ── */
+router.patch("/:id/archive", async (req, res) => {
+  if (isClient(req)) return res.status(403).json({ message: "Access denied" });
+
+  const { tenantId, id } = req.params;
+  try {
+    const client = await prisma.client.findFirst({ where: { id, tenantId, isDeleted: false } });
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    const nowArchived = !client.isArchived;
+    const updated = await prisma.client.update({
+      where: { id },
+      data: {
+        isArchived: nowArchived,
+        archivedAt: nowArchived ? new Date() : null,
+        updatedAt:  new Date(),
+      },
+    });
+
+    await audit(prisma, {
+      tenantId,
+      userId:     req.user?.id,
+      action:     nowArchived ? "ARCHIVE" : "UNARCHIVE",
+      entity:     "Client",
+      entityId:   id,
+      entityName: client.name,
+      after:      { isArchived: nowArchived },
+      req,
+    });
+
+    res.json({ message: nowArchived ? "Client archived" : "Client unarchived", isArchived: nowArchived });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update archive status", error: err.message });
   }
 });
 

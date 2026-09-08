@@ -12,7 +12,7 @@ const markOverdue = (tenantId) =>
   prisma.invoice.updateMany({
     where: {
       tenantId,
-      status:   { in: ["PENDING", "APPROVED"] },
+      status:   { in: ["PENDING", "APPROVED", "PARTIAL"] },
       dueDate:  { lt: new Date() },
       isDeleted: false,
     },
@@ -33,7 +33,7 @@ router.get("/", async (req, res) => {
     const invoices = await prisma.invoice.findMany({
       where: { tenantId, isDeleted: false, ...clientFilter, ...(status && { status }) },
       include: {
-        client:  { select: { id: true, name: true } },
+        client:  { select: { id: true, prefix: true, name: true } },
         project: { select: { id: true, name: true } },
         _count:  { select: { payments: true, ledger: true } },
       },
@@ -107,7 +107,7 @@ router.get("/:id", async (req, res) => {
     const invoice = await prisma.invoice.findFirst({
       where:   { tenantId, isDeleted: false, ...clientScope, OR: [{ id }, { invoiceNumber: id }] },
       include: {
-        client:  { select: { id: true, name: true, email: true } },
+        client:  { select: { id: true, prefix: true, name: true, email: true } },
         project: { select: { id: true, name: true } },
         items:   true,
         payments: { where: { isDeleted: false } },
@@ -147,6 +147,24 @@ router.post("/", async (req, res) => {
   const a = Number(amount), t = Number(tax), d = Number(discount);
 
   try {
+    const client = await prisma.client.findUnique({
+      where:  { id: clientId, tenantId },
+      select: { status: true, name: true },
+    });
+    if (!client)
+      return res.status(404).json({ message: "Client not found" });
+    if (client.status !== "ACTIVE")
+      return res.status(400).json({ message: `Cannot create invoice: client "${client.name}" is ${client.status.toLowerCase()}` });
+
+    if (projectId) {
+      const project = await prisma.project.findUnique({
+        where:  { id: projectId, tenantId },
+        select: { status: true, name: true },
+      });
+      if (project && (project.status === "COMPLETED" || project.status === "CANCELLED"))
+        return res.status(400).json({ message: `Cannot create invoice: project "${project.name}" is ${project.status.toLowerCase()}` });
+    }
+
     const invoice = await prisma.invoice.create({
       data: {
         tenantId, clientId, projectId, invoiceNumber, title,
@@ -158,7 +176,7 @@ router.post("/", async (req, res) => {
       },
     });
 
-    await audit(prisma, { tenantId, userId: createdBy, action: "CREATE", entity: "Invoice", entityId: invoice.id, entityName: invoice.invoiceNumber, after: { totalAmount: invoice.totalAmount, clientId }, req });
+    await audit(prisma, { tenantId, userId: createdBy, action: "CREATE", entity: "Invoice", entityId: invoice.id, entityName: invoice.invoiceNumber, after: { totalAmount: invoice.totalAmount, status: invoice.status }, req });
     await notifyTenant(prisma, { tenantId, title: "New Invoice Created", message: `Invoice ${invoice.invoiceNumber || invoice.id} (₹${invoice.totalAmount}) has been created`, type: "INFO" });
 
     res.status(201).json(invoice);
@@ -176,6 +194,18 @@ router.put("/:id", async (req, res) => {
   try {
     const current = await prisma.invoice.findFirst({ where: { id, tenantId, isDeleted: false } });
     if (!current) return res.status(404).json({ message: "Invoice not found" });
+
+    if (current.status === "CANCELLED") {
+      return res.status(409).json({ message: "Voided invoices cannot be edited." });
+    }
+
+    // Block financial field changes on PAID invoices
+    const financialFieldChanged = amount !== undefined || tax !== undefined || discount !== undefined;
+    if (current.status === "PAID" && financialFieldChanged) {
+      return res.status(409).json({
+        message: "Financial amounts cannot be changed on a paid invoice. Void and reissue if correction is needed.",
+      });
+    }
 
     const a = amount   !== undefined ? Number(amount)   : current.amount;
     const t = tax      !== undefined ? Number(tax)      : current.tax;
@@ -344,30 +374,26 @@ router.delete("/:id", async (req, res) => {
     });
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
 
-    if (["APPROVED", "PAID", "OVERDUE"].includes(invoice.status)) {
+    if (["PAID"].includes(invoice.status)) {
       return res.status(409).json({
-        message: `Invoice is ${invoice.status} and cannot be deleted. Correct it instead.`,
-      });
-    }
-    if (invoice._count.payments > 0) {
-      return res.status(409).json({
-        message: "Invoice has payment records and cannot be deleted. Correct it instead.",
+        message: "Paid invoices cannot be voided. Record a credit note or correction instead.",
       });
     }
     if (invoice._count.ledger > 0) {
       return res.status(409).json({
-        message: "Invoice has ledger entries and cannot be deleted.",
+        message: "Invoice has ledger entries and cannot be voided.",
       });
     }
 
+    // VOID: set status=CANCELLED — keeps record visible with strikethrough for audit trail
     await prisma.invoice.update({
       where: { id },
-      data:  { isDeleted: true, deletedAt: new Date() },
+      data:  { status: "CANCELLED", updatedAt: new Date() },
     });
 
-    await audit(prisma, { tenantId, userId: req.user.id, action: "DELETE", entity: "Invoice", entityId: id, entityName: invoice.invoiceNumber, before: { status: invoice.status }, req });
+    await audit(prisma, { tenantId, userId: req.user.id, action: "VOID", entity: "Invoice", entityId: id, entityName: invoice.invoiceNumber, before: { status: invoice.status }, after: { status: "CANCELLED" }, req });
 
-    res.json({ message: "Invoice deleted" });
+    res.json({ message: "Invoice voided", status: "CANCELLED" });
   } catch (err) {
     res.status(500).json({ message: "Failed to delete invoice", error: err.message });
   }

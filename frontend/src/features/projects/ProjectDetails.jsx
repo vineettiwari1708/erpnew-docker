@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { getProjectByIdApi } from "../../services/api/project.api";
 import { useTenantPath } from "../../store/hooks";
 import { fmtDate } from "../../utils/formatDate";
+import { fullClientName } from "../../utils/clientName";
 
 const STATUS_CLS = {
   ACTIVE:    "bg-green-100 text-green-700",
@@ -58,11 +59,12 @@ export default function ProjectDetails() {
   }
 
   const invoices = project.invoices || [];
-  const totalInvoiced = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-  const totalPaid     = invoices
+  const activeInvoices = invoices.filter((i) => i.status !== "CANCELLED");
+  const totalInvoiced = activeInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+  const totalPaid     = activeInvoices
     .filter((i) => i.status === "PAID")
     .reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-  const totalPending  = invoices
+  const totalPending  = activeInvoices
     .filter((i) => i.status === "PENDING" || i.status === "APPROVED")
     .reduce((s, i) => s + Number(i.totalAmount || 0), 0);
 
@@ -95,10 +97,10 @@ export default function ProjectDetails() {
               <p className="mt-1 text-xs font-mono text-slate-400">{project.code}</p>
             )}
             <p className="mt-1 text-sm text-slate-500">
-              Client: <span className="font-medium text-slate-700">{project.client?.name || "—"}</span>
+              Client: <span className="font-medium text-slate-700">{fullClientName(project.client) || "—"}</span>
             </p>
           </div>
-          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${STATUS_CLS[project.status] || "bg-slate-100 text-slate-600"}`}>
+          <span className={`fp px-3 py-1 text-xs font-semibold rounded-full ${STATUS_CLS[project.status] || "bg-slate-100 text-slate-600"}`}>
             {project.status}
           </span>
         </div>
@@ -112,7 +114,7 @@ export default function ProjectDetails() {
           <Info label="Type"            value={project.type} />
           <Info label="Priority"        value={project.priority} />
           <Info label="Project Manager" value={project.projectManagerName} />
-          <Info label="Client"          value={project.client?.name} />
+          <Info label="Client"          value={fullClientName(project.client)} />
           <Info label="Budget"          value={`₹${Number(project.budget || 0).toLocaleString("en-IN")}`} color="text-indigo-600" />
           <Info label="Spent"           value={`₹${Number(project.spent || 0).toLocaleString("en-IN")}`}  color="text-red-600" />
           <Info label="Start Date"      value={fmtDate(project.startDate)} />
@@ -194,7 +196,7 @@ export default function ProjectDetails() {
 
                       {/* STATUS */}
                       <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${INV_STATUS_CLS[inv.status] || "bg-slate-100 text-slate-600"}`}>
+                        <span className={`fp px-2.5 py-1 rounded-full text-xs font-semibold ${INV_STATUS_CLS[inv.status] || "bg-slate-100 text-slate-600"}`}>
                           {inv.status}
                         </span>
                       </td>
@@ -207,7 +209,7 @@ export default function ProjectDetails() {
                       {/* PAYMENT METHOD */}
                       <td className="px-4 py-3">
                         {pay ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                          <span className="fp inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
                             ✓ {pay.method?.replace("_", " ")}
                           </span>
                         ) : inv.status === "PAID" ? (

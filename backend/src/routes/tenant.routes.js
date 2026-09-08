@@ -206,12 +206,12 @@ router.delete("/:id", superAdminOnly, async (req, res) => {
   }
 });
 
-/* ── GET /:tenantId/users — list non-ADMIN users for a company ── */
+/* ── GET /:tenantId/users — list all users for a company ── */
 router.get("/:tenantId/users", superAdminOnly, async (req, res) => {
   const { tenantId } = req.params;
   try {
     const users = await prisma.user.findMany({
-      where:   { tenantId, isDeleted: false, role: { name: { not: "ADMIN" } } },
+      where:   { tenantId, isDeleted: false },
       select:  { id: true, name: true, email: true, status: true, userNumber: true, role: { select: { name: true } } },
       orderBy: { createdAt: "asc" },
     });

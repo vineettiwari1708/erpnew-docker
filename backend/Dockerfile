@@ -1,12 +1,24 @@
-FROM node:20-alpine
-RUN apk add --no-cache openssl postgresql-client
+# syntax=docker/dockerfile:1
+
+FROM node:20-slim AS deps
 WORKDIR /app
-COPY package*.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY prisma ./prisma
 RUN npx prisma generate
+
+FROM node:20-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
+COPY prisma ./prisma
 COPY src ./src
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 5001
-ENTRYPOINT ["/docker-entrypoint.sh"]
+
+CMD ["sh", "-c", "npx prisma migrate deploy && node src/server.js"]

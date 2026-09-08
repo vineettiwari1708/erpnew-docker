@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Eye, Download, FileText, Search } from "lucide-react";
+import { Eye, Download, FileText, Search, Send } from "lucide-react";
 import { PDFDownloadLink, PDFViewer } from "@react-pdf/renderer";
 
 import { getClientPaymentsApi } from "../../services/api/payment.api";
@@ -16,6 +16,7 @@ export default function ClientPayments() {
   const tenantId = user?.tenantId;
   // Admin passes ?clientId=clt_xxx from ClientDetails; CLIENT role uses their own id
   const clientId = searchParams.get("clientId") || user?.clientId;
+  const isClientRole = user?.role === "CLIENT";
 
   const tenantProfile = useTenantProfile();
   const tenant = tenantProfile ?? {};
@@ -52,10 +53,12 @@ export default function ClientPayments() {
     const q = search.toLowerCase().trim();
     if (!q) return payments;
     return payments.filter((p) =>
-      (p.id        || "").toLowerCase().includes(q) ||
-      (p.invoiceId || "").toLowerCase().includes(q) ||
-      (p.method    || "").toLowerCase().includes(q) ||
-      (p.status    || "").toLowerCase().includes(q)
+      (p.paymentNumber          || "").toLowerCase().includes(q) ||
+      (p.id                     || "").toLowerCase().includes(q) ||
+      (p.invoice?.invoiceNumber || "").toLowerCase().includes(q) ||
+      (p.invoiceId              || "").toLowerCase().includes(q) ||
+      (p.method                 || "").toLowerCase().includes(q) ||
+      (p.status                 || "").toLowerCase().includes(q)
     );
   }, [payments, search]);
 
@@ -76,12 +79,23 @@ export default function ClientPayments() {
           <h1 className="text-2xl font-semibold text-slate-900">My Payments</h1>
           <p className="text-sm text-slate-500">View all payment transactions</p>
         </div>
-        <Link
-          to={tp(clientId ? `/clients/${clientId}` : "/clients")}
-          className="text-sm text-indigo-600 hover:underline"
-        >
-          ← Back
-        </Link>
+        <div className="flex items-center gap-4">
+          {isClientRole && (
+            <Link
+              to={tp("/payments/create")}
+              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+            >
+              <Send size={13} />
+              Submit Payment
+            </Link>
+          )}
+          <Link
+            to={tp(isClientRole ? "/dashboard" : (clientId ? `/clients/${clientId}` : "/clients"))}
+            className="text-sm text-indigo-600 hover:underline"
+          >
+            ← Back
+          </Link>
+        </div>
       </div>
 
       {/* STATS */}
@@ -115,15 +129,13 @@ export default function ClientPayments() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[660px] w-full text-sm">
+            <table className="min-w-[560px] w-full text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
-                  <th className="px-5 py-4 text-left">Payment ID</th>
+                  <th className="px-5 py-4 text-left">Payment</th>
                   <th className="px-5 py-4 text-left">Invoice</th>
                   <th className="px-5 py-4 text-left">Amount</th>
-                  <th className="px-5 py-4 text-left">Method</th>
-                  <th className="px-5 py-4 text-left">Paid On</th>
-                  <th className="px-5 py-4 text-left">Status</th>
+                  <th className="px-5 py-4 text-left">Payment Info</th>
                   <th className="px-5 py-4 text-left">Actions</th>
                 </tr>
               </thead>
@@ -137,23 +149,41 @@ export default function ClientPayments() {
                       onMouseMove={(e)  => setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
                       onMouseLeave={()  => setTooltip(null)}
                     >
-                      <p className="whitespace-nowrap underline decoration-dotted decoration-slate-400">{pay.id}</p>
-                    </td>
-
-                    <td className="px-5 py-4 text-slate-600">{pay.invoice?.invoiceNumber || pay.invoiceId || "—"}</td>
-
-                    <td className="px-5 py-4 font-medium">
-                      ₹{Number(pay.amount || 0).toLocaleString("en-IN")}
-                    </td>
-
-                    <td className="px-5 py-4 text-slate-600">{pay.method || "—"}</td>
-
-                    <td className="px-5 py-4 text-slate-600">
-                      {fmtDate(pay.paidAt)}
+                      <p className="whitespace-nowrap font-semibold text-indigo-600 underline decoration-dotted decoration-indigo-300">
+                        {pay.paymentNumber || pay.id}
+                      </p>
                     </td>
 
                     <td className="px-5 py-4">
-                      <StatusBadge status={pay.status} />
+                      <Link
+                        to={tp(`/invoices/${pay.invoice?.invoiceNumber || pay.invoiceId}`)}
+                        className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 underline decoration-dotted decoration-indigo-300 whitespace-nowrap"
+                      >
+                        {pay.invoice?.invoiceNumber || pay.invoiceId || "—"}
+                      </Link>
+                      {pay.invoice?.title && (
+                        <p className="text-xs mt-0.5 text-slate-400 truncate max-w-[140px]">{pay.invoice.title}</p>
+                      )}
+                    </td>
+
+                    <td className="px-5 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold text-slate-800">₹{Number(pay.amount || 0).toLocaleString("en-IN")}</span>
+                        <StatusBadge status={pay.status} />
+                      </div>
+                    </td>
+
+                    <td className="px-5 py-4 whitespace-nowrap cursor-default">
+                      <div className="group flex flex-col gap-0.5 transition-transform duration-200 hover:scale-[1.12] origin-left">
+                        <span className="text-sm font-semibold text-slate-600 font-mono group-hover:text-slate-800 transition-colors duration-200">
+                          {pay.transactionId || <span className="text-slate-300 font-sans font-normal">No ref</span>}
+                          {pay.method && <span className="ml-1 font-sans font-semibold text-slate-400 group-hover:text-slate-600">({pay.method})</span>}
+                        </span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-600 transition-colors duration-200">
+                          <span className="font-medium text-slate-500 group-hover:text-slate-700">Paid</span>{" "}
+                          {pay.paidAt ? fmtDate(pay.paidAt) : "—"}
+                        </span>
+                      </div>
                     </td>
 
                     <td className="px-5 py-4">
@@ -177,7 +207,7 @@ export default function ClientPayments() {
 
                         <PDFDownloadLink
                           document={<PaymentPDF tenant={tenant} payment={pay} />}
-                          fileName={`payment-${pay.id}.pdf`}
+                          fileName={`payment-${pay.paymentNumber || pay.id}.pdf`}
                         >
                           {({ loading: pdfLoading }) =>
                             pdfLoading ? (
@@ -207,7 +237,7 @@ export default function ClientPayments() {
       {tooltip && (
         <div
           className="pointer-events-none fixed z-[999] w-64 rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{ left: tooltip.x + 14, top: tooltip.y, transform: "translateY(-50%)" }}
+          style={{ left: tooltip.x + 14, top: Math.max(120, Math.min(tooltip.y, window.innerHeight - 120)), transform: "translateY(-50%)" }}
         >
           <div className={`rounded-t-2xl px-4 py-3 ${
             tooltip.pay.status === "SUCCESS" ? "bg-emerald-600"
@@ -215,7 +245,7 @@ export default function ClientPayments() {
             : "bg-red-500"
           }`}>
             <div className="flex items-center justify-between gap-2">
-              <p className="font-mono text-xs font-bold text-white truncate">{tooltip.pay.id}</p>
+              <p className="font-mono text-xs font-bold text-white truncate">{tooltip.pay.paymentNumber || tooltip.pay.id}</p>
               <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold text-white">
                 {tooltip.pay.status}
               </span>
@@ -255,7 +285,7 @@ export default function ClientPayments() {
           <div className="h-[90vh] w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b px-5 py-3">
               <h2 className="text-sm font-semibold">
-                Payment Preview — {previewPayment.id}
+                Payment Preview — {previewPayment.paymentNumber || previewPayment.id}
               </h2>
               <button
                 onClick={() => setPreviewPayment(null)}
@@ -300,7 +330,7 @@ function StatusBadge({ status }) {
   };
 
   return (
-    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${styles[status] || "bg-slate-100 text-slate-700"}`}>
+    <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${styles[status] || "bg-slate-100 text-slate-700"}`}>
       {status}
     </span>
   );

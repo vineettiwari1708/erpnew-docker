@@ -25,7 +25,7 @@ router.get("/", async (req, res) => {
         ? Promise.resolve(1)
         : prisma.client.count({ where: { tenantId, isDeleted: false } }),
       prisma.project.count({ where: { tenantId, ...clientScope } }),
-      prisma.invoice.count({ where: { tenantId, isDeleted: false, ...clientScope } }),
+      prisma.invoice.count({ where: { tenantId, isDeleted: false, status: { not: "CANCELLED" }, ...clientScope } }),
       prisma.payment.count({ where: { tenantId, isDeleted: false, ...clientScope } }),
       isClient
         ? Promise.resolve(0)
@@ -35,7 +35,7 @@ router.get("/", async (req, res) => {
 
       prisma.invoice.groupBy({
         by: ["status"],
-        where: { tenantId, isDeleted: false, ...clientScope },
+        where: { tenantId, isDeleted: false, status: { not: "CANCELLED" }, ...clientScope },
         _sum: { totalAmount: true },
         _count: { id: true },
       }),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useMatch, useSearchParams } from "react-router-dom";
+import { Link, useMatch, useNavigate, useSearchParams } from "react-router-dom";
+import { CheckCircle, FilePlus, FolderPlus, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -27,6 +28,7 @@ const initialForm = {
 
 export default function CreateProject() {
   const tp = useTenantPath();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
 
@@ -41,6 +43,7 @@ export default function CreateProject() {
   const [form, setForm] = useState({ ...initialForm, clientId: prefillClientId });
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [createdProject, setCreatedProject] = useState(null);
   const codeEdited = useRef(false); // true once the user manually types in the code field
 
   const tenantId = user?.tenantId;
@@ -82,10 +85,20 @@ export default function CreateProject() {
   const onChange = (e) => {
     const { name, value } = e.target;
     if (name === "code") {
-      // if user clears the field, re-enable auto-gen; otherwise lock it
       codeEdited.current = value !== "";
     }
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "endDate" && next.startDate && value && value < next.startDate) {
+        toast.error("End date cannot be before start date");
+        return { ...prev, endDate: "" };
+      }
+      if (name === "startDate" && next.endDate && value && next.endDate < value) {
+        toast.error("Start date is after end date — end date cleared");
+        return { ...prev, startDate: value, endDate: "" };
+      }
+      return next;
+    });
   };
 
   // auto-generate code from project name while user hasn't manually set one
@@ -96,7 +109,20 @@ export default function CreateProject() {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    if (!form.clientId) return toast.error("Please select a client");
+
+    const nameVal = form.name.trim();
+    if (!nameVal) { toast.error("Project name is required"); return; }
+    if (nameVal.length < 3) { toast.error("Project name must be at least 3 characters"); return; }
+
+    if (!form.clientId) { toast.error("Please select a client"); return; }
+
+    if (!form.startDate) { toast.error("Start date is required"); return; }
+
+    if (form.endDate && form.startDate && form.endDate < form.startDate) {
+      toast.error("End date cannot be before start date");
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
@@ -108,10 +134,10 @@ export default function CreateProject() {
       if (isEdit) {
         const res = await updateProjectApi(id, payload);
         toast.success(`Project "${res.data.name}" updated`);
+        navigate(tp("/projects"));
       } else {
         const res = await createProjectApi(payload);
-        toast.success(`Project "${res.data.name}" created`);
-        setForm(initialForm);
+        setCreatedProject(res.data);
       }
     } catch (err) {
       toast.error(err?.response?.data?.message || err.message || "Failed");
@@ -119,6 +145,56 @@ export default function CreateProject() {
       setLoading(false);
     }
   };
+
+  /* ── SUCCESS PAGE ── */
+  if (createdProject) {
+    return (
+      <section className="flex h-[90dvh] items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-5">
+
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
+            <CheckCircle className="mx-auto mb-3 text-green-500" size={44} />
+            <h2 className="text-lg font-semibold text-slate-900">Project Created!</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              <span className="font-medium">{createdProject.name}</span> has been added successfully.
+            </p>
+            {createdProject.code && (
+              <span className="mt-2 inline-block rounded-full bg-indigo-100 px-3 py-1 text-xs font-mono font-semibold text-indigo-700">
+                {createdProject.code}
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => navigate(tp(`/invoices/create?projectId=${createdProject.id}&projectName=${encodeURIComponent(createdProject.name)}`))}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <FilePlus size={18} />
+              Create Invoice for this Project
+            </button>
+
+            <button
+              onClick={() => { setCreatedProject(null); setForm(initialForm); codeEdited.current = false; }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <FolderPlus size={18} />
+              Create Another Project
+            </button>
+
+            <Link
+              to={tp("/projects")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              <ArrowLeft size={16} />
+              Back to Projects
+            </Link>
+          </div>
+
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="h-[calc(95vh-80px)] overflow-y-auto space-y-6 pr-2">
@@ -216,7 +292,7 @@ export default function CreateProject() {
 
             <Input
               type="date"
-              label="Start Date"
+              label="Start Date *"
               name="startDate"
               value={form.startDate}
               onChange={onChange}
@@ -228,6 +304,7 @@ export default function CreateProject() {
               name="endDate"
               value={form.endDate}
               onChange={onChange}
+              min={form.startDate || undefined}
             />
 
             <Input

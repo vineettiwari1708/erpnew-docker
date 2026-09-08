@@ -60,3 +60,15 @@ export const deletePaymentApi = async (id) => {
   const res = await http.delete(`/${tenantId}/payments/${id}`);
   return { data: res.data };
 };
+
+export const approvePaymentApi = async (id) => {
+  const tenantId = getTenantId();
+  const res = await http.patch(`/${tenantId}/payments/${id}/approve`);
+  return { data: res.data };
+};
+
+export const rejectPaymentApi = async (id, reason) => {
+  const tenantId = getTenantId();
+  const res = await http.patch(`/${tenantId}/payments/${id}/reject`, { reason });
+  return { data: res.data };
+};

@@ -103,7 +103,7 @@ export default function Ledger() {
 
               {/* TYPE */}
               <span
-                className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                className={`fp px-3 py-1 text-xs font-semibold rounded-full ${
                   item.type === "CREDIT"
                     ? "bg-green-100 text-green-700"
                     : "bg-red-100 text-red-700"

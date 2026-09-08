@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { getPaymentByIdApi } from "../../services/api/payment.api";
 import { useTenantPath } from "../../store/hooks";
 import { fmtDate as fmt } from "../../utils/formatDate";
+import { fullClientName } from "../../utils/clientName";
 
 const STATUS_COLORS = {
   SUCCESS: "bg-green-100 text-green-700",
@@ -83,11 +84,11 @@ export default function PaymentDetails() {
               </p>
             )}
             {client && (
-              <p className="text-sm text-slate-500 mt-0.5">Client: <span className="font-medium text-slate-700">{client.name}</span></p>
+              <p className="text-sm text-slate-500 mt-0.5">Client: <span className="font-medium text-slate-700">{fullClientName(client)}</span></p>
             )}
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[payment.status] || "bg-slate-100 text-slate-600"}`}>
+            <span className={`fp px-3 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[payment.status] || "bg-slate-100 text-slate-600"}`}>
               {payment.status}
             </span>
             <p className="text-2xl font-bold text-indigo-700">
@@ -102,7 +103,7 @@ export default function PaymentDetails() {
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Info label="Invoice"        value={invoice?.invoiceNumber || payment.invoiceId} />
-          <Info label="Client"         value={client?.name || payment.clientId} />
+          <Info label="Client"         value={fullClientName(client) || payment.clientId} />
           <Info label="Amount"         value={`₹${Number(payment.amount || 0).toLocaleString("en-IN")}`} highlight />
           <Info label="Method"         value={METHOD_LABELS[payment.method] || payment.method} />
           <Info label="Transaction ID" value={payment.transactionId} />

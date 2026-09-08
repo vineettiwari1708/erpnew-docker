@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useMatch, useNavigate } from "react-router-dom";
 import { CheckCircle, FolderPlus, UserPlus, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
+import AddressFields from "../../components/AddressFields";
 
 import {
   createClientApi,
@@ -10,7 +11,10 @@ import {
 } from "../../services/api/client.api";
 import { useAuth, useTenantPath } from "../../store/hooks";
 
+const PREFIXES = ["", "Mr.", "Mrs.", "Ms.", "Dr.", "Prof."];
+
 const initialForm = {
+  prefix: "",
   name: "",
   email: "",
   phone: "",
@@ -60,6 +64,7 @@ export default function CreateClient() {
         if (!client) return;
         setForm({
           ...initialForm,
+          prefix: client.prefix || "",
           name: client.name || "",
           email: client.email || "",
           phone: client.phone || "",
@@ -93,8 +98,24 @@ export default function CreateClient() {
   const onSubmit = async (e) => {
     e.preventDefault();
 
+    const nameVal = form.name.trim();
+    if (!nameVal) { toast.error("Client name is required"); return; }
+    if (nameVal.length < 3) { toast.error("Client name must be at least 3 characters"); return; }
+
+    if (form.email) {
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRe.test(form.email.trim())) { toast.error("Enter a valid email address"); return; }
+    }
+
+    if (form.phone) {
+      const digits = form.phone.replace(/\D/g, "").replace(/^91/, "");
+      if (digits.length !== 10) { toast.error("Phone number must be 10 digits"); return; }
+    }
+
     if (!isEdit && enablePortal) {
       if (!portalEmail) { toast.error("Portal email is required"); return; }
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRe.test(portalEmail.trim())) { toast.error("Enter a valid portal email address"); return; }
       if (!portalPassword) { toast.error("Portal password is required"); return; }
       if (portalPassword.length < 6) { toast.error("Password must be at least 6 characters"); return; }
       if (portalPassword !== portalConfirm) { toast.error("Passwords do not match"); return; }
@@ -219,7 +240,30 @@ export default function CreateClient() {
           <div className="rounded-xl border bg-slate-50 p-4">
             <h2 className="mb-4 text-sm font-semibold text-slate-700">Client Information</h2>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Name"     name="name"     value={form.name}     onChange={onChange} required />
+              {/* Prefix + Name — same row, prefix narrow */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-medium text-slate-600">Name <span className="text-red-500">*</span></label>
+                <div className="flex gap-2">
+                  <select
+                    name="prefix"
+                    value={form.prefix}
+                    onChange={onChange}
+                    className="w-24 shrink-0 rounded-lg border px-2 py-2 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    {PREFIXES.map((p) => (
+                      <option key={p} value={p}>{p || "—"}</option>
+                    ))}
+                  </select>
+                  <input
+                    name="name"
+                    value={form.name}
+                    onChange={onChange}
+                    required
+                    placeholder="Client full name"
+                    className="flex-1 min-w-0 rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
               <Input label="Email"    name="email"    value={form.email}    onChange={onChange} />
               <Input label="Phone"    name="phone"    value={form.phone}    onChange={onChange} />
               <Input label="Company"  name="company"  value={form.company}  onChange={onChange} />
@@ -238,12 +282,12 @@ export default function CreateClient() {
 
           <div className="rounded-xl border bg-slate-50 p-4">
             <h2 className="mb-4 text-sm font-semibold text-slate-700">Address</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Line"    name="line1"   value={form.address.line1}   onChange={onAddressChange} />
-              <Input label="City"    name="city"    value={form.address.city}    onChange={onAddressChange} />
-              <Input label="State"   name="state"   value={form.address.state}   onChange={onAddressChange} />
-              <Input label="Pincode" name="pincode" value={form.address.pincode} onChange={onAddressChange} />
-            </div>
+            <AddressFields
+              address={form.address}
+              onChange={(field, value) =>
+                setForm((prev) => ({ ...prev, address: { ...prev.address, [field]: value } }))
+              }
+            />
           </div>
 
           <div className="rounded-xl border bg-slate-50 p-4">

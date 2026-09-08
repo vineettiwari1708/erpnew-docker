@@ -17,7 +17,7 @@ router.get("/", async (req, res) => {
     const projects = await prisma.project.findMany({
       where: { tenantId, ...clientFilter, ...(status && { status }) },
       include: {
-        client:   { select: { id: true, name: true } },
+        client:   { select: { id: true, prefix: true, name: true } },
         _count:   { select: { invoices: true } },
         invoices: {
           where:  { isDeleted: false },

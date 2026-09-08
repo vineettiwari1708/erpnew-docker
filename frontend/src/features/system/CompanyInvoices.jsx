@@ -4,6 +4,7 @@ import { FileText } from "lucide-react";
 import { getInvoicesApi } from "../../services/api/invoice.api";
 import { getTenantByIdApi } from "../../services/api/tenant.api";
 import { fmtDate } from "../../utils/formatDate";
+import { fullClientName } from "../../utils/clientName";
 
 const STATUS_STYLE = {
   PAID:     "bg-green-100 text-green-700",
@@ -39,11 +40,12 @@ export default function CompanyInvoices() {
   const fmt = (n) =>
     Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const totalPaid    = invoices.filter((i) => i.status === "PAID")
+  const activeInvoices = invoices.filter((i) => i.status !== "CANCELLED");
+  const totalPaid    = activeInvoices.filter((i) => i.status === "PAID")
     .reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-  const totalPending = invoices.filter((i) => i.status === "PENDING")
+  const totalPending = activeInvoices.filter((i) => i.status === "PENDING")
     .reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-  const totalOverdue = invoices.filter((i) => i.status === "OVERDUE")
+  const totalOverdue = activeInvoices.filter((i) => i.status === "OVERDUE")
     .reduce((s, i) => s + Number(i.totalAmount || 0), 0);
 
   return (
@@ -113,7 +115,7 @@ export default function CompanyInvoices() {
                       {inv.invoiceNumber || inv.id.slice(0, 8)}
                     </td>
                     <td className="px-5 py-3 font-medium text-slate-800">
-                      {inv.client?.name || "—"}
+                      {fullClientName(inv.client) || "—"}
                     </td>
                     <td className="px-5 py-3 text-slate-500">
                       {inv.project?.name || "—"}
@@ -125,7 +127,7 @@ export default function CompanyInvoices() {
                       {inv.dueDate ? fmtDate(inv.dueDate) : "—"}
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[inv.status] || "bg-slate-100 text-slate-500"}`}>
+                      <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[inv.status] || "bg-slate-100 text-slate-500"}`}>
                         {inv.status}
                       </span>
                     </td>

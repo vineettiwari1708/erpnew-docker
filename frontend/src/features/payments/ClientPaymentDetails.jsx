@@ -136,7 +136,7 @@ export default function ClientPaymentDetails() {
             )}
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[payment.status] || "bg-slate-100 text-slate-600"}`}>
+            <span className={`fp px-3 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[payment.status] || "bg-slate-100 text-slate-600"}`}>
               {payment.status}
             </span>
             <p className="text-2xl font-bold text-emerald-700">

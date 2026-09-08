@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -44,11 +45,12 @@ enum ProjectStatus {
   CANCELLED
 }
 
-// PENDING → APPROVED → PAID  (OVERDUE is set by a cron job)
+// PENDING → APPROVED → PARTIAL/PAID  (OVERDUE is set by a cron job)
 enum InvoiceStatus {
   DRAFT
   PENDING
   APPROVED
+  PARTIAL
   PAID
   OVERDUE
   CANCELLED
@@ -75,6 +77,12 @@ enum PaymentMethod {
 enum LedgerType {
   CREDIT
   DEBIT
+}
+
+enum InvoiceRequestStatus {
+  PENDING
+  FULFILLED
+  DECLINED
 }
 
 // ============================================================
@@ -125,15 +133,16 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  roles         Role[]
-  clients       Client[]
-  projects      Project[]
-  invoices      Invoice[]
-  payments      Payment[]
-  ledger        Ledger[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
+  users           User[]
+  roles           Role[]
+  clients         Client[]
+  projects        Project[]
+  invoices        Invoice[]
+  payments        Payment[]
+  ledger          Ledger[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  invoiceRequests InvoiceRequest[]
 }
 
 // ============================================================
@@ -236,6 +245,7 @@ model Client {
   tenantId String
 
   clientNumber String?   // e.g. CLT-MET-001
+  prefix       String?   // Mr. / Mrs. / Ms. / Dr. / Prof.
   name         String
   email        String?
   phone        String?
@@ -249,8 +259,10 @@ model Client {
 
   createdBy String?   // userId of the admin who created this client
 
-  isDeleted Boolean   @default(false)
-  deletedAt DateTime?
+  isDeleted  Boolean   @default(false)
+  deletedAt  DateTime?
+  isArchived Boolean   @default(false)
+  archivedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -258,10 +270,11 @@ model Client {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   // relations to child records
-  users    User[]    @relation("ClientUsers")  // CLIENT-role users linked to this client
-  projects Project[]
-  invoices Invoice[]
-  payments Payment[]
+  users           User[]    @relation("ClientUsers")  // CLIENT-role users linked to this client
+  projects        Project[]
+  invoices        Invoice[]
+  payments        Payment[]
+  invoiceRequests InvoiceRequest[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -295,9 +308,10 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  client   Client    @relation(fields: [clientId], references: [id])
-  invoices Invoice[]
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  client          Client    @relation(fields: [clientId], references: [id])
+  invoices        Invoice[]
+  invoiceRequests InvoiceRequest[]
 
   @@index([tenantId])
   @@index([clientId])
@@ -320,6 +334,7 @@ model Invoice {
   tax         Float @default(0)
   discount    Float @default(0)
   totalAmount Float         // amount + tax - discount  (stored for fast reads)
+  paidAmount  Float @default(0) // running sum of SUCCESS payments
 
   status    InvoiceStatus @default(PENDING)
   issueDate DateTime?
@@ -341,9 +356,10 @@ model Invoice {
   client  Client   @relation(fields: [clientId], references: [id])
   project Project? @relation(fields: [projectId], references: [id])
 
-  items    InvoiceItem[]
-  payments Payment[]
-  ledger   Ledger[]
+  items           InvoiceItem[]
+  payments        Payment[]
+  ledger          Ledger[]
+  invoiceRequests InvoiceRequest[]
 
   @@index([tenantId])
   @@index([clientId])
@@ -364,6 +380,40 @@ model InvoiceItem {
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId])
+}
+
+// ============================================================
+//  INVOICE REQUEST   (client asks staff to raise an invoice)
+//  flow: PENDING → FULFILLED (linked to the created Invoice) | DECLINED
+// ============================================================
+
+model InvoiceRequest {
+  id        String  @id @default(cuid())
+  tenantId  String
+  clientId  String
+  projectId String?
+
+  title String?
+  notes String?
+
+  status        InvoiceRequestStatus @default(PENDING)
+  requestedBy   String?   // userId of the CLIENT-role user who submitted it
+  resolvedBy    String?   // admin userId who fulfilled/declined it
+  resolvedAt    DateTime?
+  declineReason String?
+  invoiceId     String?   // set once fulfilled — links to the created Invoice
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  client  Client   @relation(fields: [clientId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([clientId])
 }
 
 // ============================================================

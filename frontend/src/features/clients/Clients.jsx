@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, Archive, ArchiveRestore } from "lucide-react";
 import toast from "react-hot-toast";
-import { getClientsApi, deleteClientApi, updateClientApi } from "../../services/api/client.api";
+import { getClientsApi, deleteClientApi, updateClientApi, archiveClientApi } from "../../services/api/client.api";
 import { useTenantPath, useHasPermission, useAuth } from "../../store/hooks";
 
 export default function Clients() {
@@ -14,15 +14,16 @@ export default function Clients() {
   const canEdit   = useHasPermission("CLIENT_UPDATE");
   const canDelete = useHasPermission("CLIENT_DELETE");
 
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [tooltip, setTooltip] = useState(null);
-  const [search, setSearch]   = useState("");
-  const [acting, setActing]   = useState(null); // clientId being acted on
+  const [clients, setClients]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [tooltip, setTooltip]         = useState(null);
+  const [search, setSearch]           = useState("");
+  const [acting, setActing]           = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   /* ── DELETE CONFIRM MODAL ── */
-  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
-  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting]         = useState(false);
 
   /* ── PAGINATION ── */
   const CLIENTS_PER_PAGE = 20;
@@ -51,13 +52,13 @@ export default function Clients() {
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
-    getClientsApi(tenantId)
+    getClientsApi(tenantId, { archived: showArchived })
       .then((res) => setClients(res.data || []))
       .catch(() => setClients([]))
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, [tenantId, showArchived]);
 
-  useEffect(() => { setCurrentPage(1); }, [clients.length]);
+  useEffect(() => { setCurrentPage(1); }, [clients.length, showArchived]);
 
   /* ── DISABLE / ENABLE ── */
   const handleToggleStatus = async (c) => {
@@ -77,7 +78,23 @@ export default function Clients() {
     }
   };
 
-  /* ── DELETE (admin — only when no invoices/payments) ── */
+  /* ── ARCHIVE / UNARCHIVE ── */
+  const handleArchive = async (c) => {
+    setActing(c.id);
+    try {
+      const res = await archiveClientApi(c.id);
+      const nowArchived = res.data.isArchived;
+      toast.success(`${c.name} ${nowArchived ? "archived" : "unarchived"}`);
+      // Remove from current list (moved to other tab)
+      setClients((prev) => prev.filter((x) => x.id !== c.id));
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to archive client");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  /* ── DELETE ── */
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -98,6 +115,29 @@ export default function Clients() {
     const hasRecords = (c._count?.invoices ?? 0) > 0 || (c._count?.payments ?? 0) > 0;
     const busy = acting === c.id;
 
+    if (showArchived) {
+      return (
+        <div className="flex gap-2">
+          <Link
+            to={tp(`/clients/${c.id}`)}
+            className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
+          >
+            View
+          </Link>
+          {canEdit && (
+            <button
+              onClick={() => handleArchive(c)}
+              disabled={busy}
+              className="flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+            >
+              <ArchiveRestore size={13} />
+              {busy ? "..." : "Unarchive"}
+            </button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-wrap gap-2">
         <Link
@@ -116,7 +156,19 @@ export default function Clients() {
           </Link>
         )}
 
-        {/* Delete — only when client has NO invoices/payments (admin only) */}
+        {/* Archive — when client has records (instead of disable) */}
+        {canEdit && hasRecords && (
+          <button
+            onClick={() => handleArchive(c)}
+            disabled={busy}
+            className="flex items-center gap-1 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+          >
+            <Archive size={13} />
+            {busy ? "..." : "Archive"}
+          </button>
+        )}
+
+        {/* Delete — only when client has NO invoices/payments */}
         {canDelete && !hasRecords && (
           <button
             onClick={() => setDeleteTarget({ id: c.id, name: c.name })}
@@ -126,18 +178,14 @@ export default function Clients() {
           </button>
         )}
 
-        {/* Disable / Enable — when client has invoices/payments or is already inactive */}
-        {canEdit && (hasRecords || c.status === "INACTIVE") && (
+        {/* Disable / Enable — only when INACTIVE (no records) */}
+        {canEdit && !hasRecords && c.status === "INACTIVE" && (
           <button
             onClick={() => handleToggleStatus(c)}
             disabled={busy}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60 ${
-              c.status === "ACTIVE"
-                ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
-                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-            }`}
+            className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
           >
-            {busy ? "..." : c.status === "ACTIVE" ? "Disable" : "Enable"}
+            {busy ? "..." : "Enable"}
           </button>
         )}
       </div>
@@ -154,15 +202,38 @@ export default function Clients() {
           <h1 className="text-2xl font-semibold text-slate-900">Clients</h1>
           <p className="mt-1 text-sm text-slate-500">Manage all tenant clients</p>
         </div>
-        {canCreate && (
-          <Link
-            to={tp("/clients/create")}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 text-center"
+        <div className="flex items-center gap-3">
+          {/* Archive toggle */}
+          <button
+            onClick={() => { setShowArchived((v) => !v); setSearch(""); }}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition ${
+              showArchived
+                ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
           >
-            + Add Client
-          </Link>
-        )}
+            {showArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+            {showArchived ? "Active Clients" : "Archived"}
+          </button>
+
+          {canCreate && !showArchived && (
+            <Link
+              to={tp("/clients/create")}
+              className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 text-center"
+            >
+              + Add Client
+            </Link>
+          )}
+        </div>
       </div>
+
+      {/* ARCHIVED BANNER */}
+      {showArchived && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Archive size={16} className="shrink-0 text-amber-600" />
+          Showing archived clients — these are hidden from active lists and calculations.
+        </div>
+      )}
 
       {/* SEARCH */}
       <div className="relative">
@@ -178,15 +249,14 @@ export default function Clients() {
 
       {/* TABLE */}
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="max-h-[calc(95vh-220px)] overflow-y-auto">
+        <div className="max-h-[calc(95vh-260px)] overflow-auto">
           <div className="overflow-x-auto">
-            <table className="min-w-[700px] w-full text-sm">
+            <table className="min-w-[560px] w-full text-sm">
 
               <thead className="sticky top-0 z-10 border-b bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">Client</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-500">Email</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-500">Phone</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-500">Contact</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">Records</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-500">Actions</th>
@@ -198,7 +268,7 @@ export default function Clients() {
                   <tr><td colSpan="6" className="px-4 py-10 text-center text-slate-500">Loading clients...</td></tr>
                 ) : paginatedClients.length > 0 ? (
                   paginatedClients.map((c) => (
-                    <tr key={c.id} className="border-b hover:bg-slate-50 transition">
+                    <tr key={c.id} className={`border-b transition ${showArchived ? "bg-amber-50/30 opacity-75 hover:opacity-100" : "hover:bg-slate-50"}`}>
 
                       {/* CLIENT NAME */}
                       <td
@@ -209,38 +279,45 @@ export default function Clients() {
                       >
                         <div className="flex items-center gap-3">
                           <div className={`flex h-10 w-10 items-center justify-center rounded-full font-semibold ${
-                            c.status === "ACTIVE" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-400"
+                            showArchived ? "bg-amber-100 text-amber-600" : c.status === "ACTIVE" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-400"
                           }`}>
                             {c.name?.charAt(0)}
                           </div>
                           <div>
-                            <Link to={tp(`/clients/${c.id}`)} className="font-medium text-slate-800 hover:text-indigo-600">
-                              {c.name}
+                            <Link to={tp(`/clients/${c.id}`)} className={`font-medium hover:text-indigo-600 ${showArchived ? "text-slate-500" : "text-slate-800"}`}>
+                              {c.prefix ? `${c.prefix} ${c.name}` : c.name}
                             </Link>
                             <p className="text-xs text-slate-400">{c.clientNumber || c.id}</p>
+                            {showArchived && (
+                              <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium text-amber-600">
+                                <Archive size={10} /> Archived
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
 
-                      {/* EMAIL */}
-                      <td className="px-4 py-4 text-slate-600">{c.email || "N/A"}</td>
-
-                      {/* PHONE */}
-                      <td className="px-4 py-4 text-slate-600">{c.phone || "N/A"}</td>
+                      {/* CONTACT — email + phone */}
+                      <td className="px-4 py-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm text-slate-600">{c.email || <span className="text-slate-300">No email</span>}</span>
+                          <span className="text-xs text-slate-400">{c.phone || <span className="text-slate-300">No phone</span>}</span>
+                        </div>
+                      </td>
 
                       {/* STATUS */}
                       <td className="px-4 py-4">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${
                           c.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                         }`}>
                           {c.status}
                         </span>
                       </td>
 
-                      {/* RECORDS COUNT — shows whether deletion is locked */}
+                      {/* RECORDS COUNT */}
                       <td className="px-4 py-4">
                         {(c._count?.invoices ?? 0) > 0 || (c._count?.payments ?? 0) > 0 ? (
-                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                          <span className="fp rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
                             {c._count?.invoices ?? 0} inv · {c._count?.payments ?? 0} pay
                           </span>
                         ) : (
@@ -256,7 +333,11 @@ export default function Clients() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan="6" className="px-4 py-10 text-center text-slate-500">No clients found</td></tr>
+                  <tr>
+                    <td colSpan="6" className="px-4 py-10 text-center text-slate-500">
+                      {showArchived ? "No archived clients" : "No clients found"}
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -279,15 +360,19 @@ export default function Clients() {
       {tooltip && (
         <div
           className="pointer-events-none fixed z-[999] w-64 rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{ left: tooltip.x + 14, top: tooltip.y, transform: "translateY(-50%)" }}
+          style={{ left: tooltip.x + 14, top: Math.max(120, Math.min(tooltip.y, window.innerHeight - 120)), transform: "translateY(-50%)" }}
         >
-          <div className="rounded-t-2xl bg-emerald-600 px-4 py-3 flex items-center gap-3">
+          <div className={`rounded-t-2xl px-4 py-3 flex items-center gap-3 ${{
+            ACTIVE:    "bg-emerald-600",
+            INACTIVE:  "bg-slate-400",
+            SUSPENDED: "bg-red-500",
+          }[tooltip.c.status] || "bg-emerald-600"}`}>
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold text-white">
               {tooltip.c.name?.charAt(0)}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold text-white truncate">{tooltip.c.name}</p>
-              {tooltip.c.company && <p className="text-[10px] text-emerald-200 truncate">{tooltip.c.company}</p>}
+              {tooltip.c.company && <p className="text-[10px] text-white/70 truncate">{tooltip.c.company}</p>}
             </div>
           </div>
           <div className="p-4 space-y-2">
@@ -300,13 +385,13 @@ export default function Clients() {
               <p className="text-sm text-slate-700">{tooltip.c.phone || "—"}</p>
             </div>
             <div className="flex items-center gap-2 pt-1">
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              <span className={`fp rounded-full px-3 py-1 text-xs font-semibold ${
                 tooltip.c.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
               }`}>
                 {tooltip.c.status}
               </span>
               {(tooltip.c._count?.invoices ?? 0) > 0 && (
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                <span className="fp rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
                   {tooltip.c._count.invoices} invoices
                 </span>
               )}

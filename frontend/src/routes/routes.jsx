@@ -24,6 +24,7 @@ import Users from "../features/users/Users";
 import UserDetails from "../features/users/UserDetails";
 import CreateUser from "../features/users/CreateUser";
 import ClientInvoiceDetails from "../features/invoices/ClientInvoiceDetails";
+import InvoiceRequests from "../features/invoices/InvoiceRequests";
 
 /* System */
 import SystemDashboard from "../features/system/SystemDashboard";
@@ -206,7 +207,15 @@ export const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-     
+      {
+        path: "invoice-requests",
+        element: (
+          <ProtectedRoute permission="INVOICE_VIEW">
+            <InvoiceRequests />
+          </ProtectedRoute>
+        ),
+      },
+
       {
         path: "payments",
         element: (

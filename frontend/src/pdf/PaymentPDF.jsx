@@ -1,6 +1,7 @@
 import React from "react";
 import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import "./pdfFonts";
+import { fullClientName } from "../utils/clientName";
 
 const styles = StyleSheet.create({
   page:       { padding: 30, fontSize: 10, fontFamily: "Roboto", color: "#111827" },
@@ -63,7 +64,7 @@ const PaymentPDF = ({ tenant, payment }) => {
         <View style={styles.sectionRow}>
           <View style={styles.box}>
             <Text style={styles.boxTitle}>Payment Information</Text>
-            <Text>Client: {payment.client?.name || "—"}</Text>
+            <Text>Client: {fullClientName(payment.client) || "—"}</Text>
             <Text>Invoice: {payment.invoice?.invoiceNumber || payment.invoiceId || "—"}</Text>
             <Text>Transaction ID: {payment.transactionId || "—"}</Text>
             {payment.notes && <Text>Notes: {payment.notes}</Text>}

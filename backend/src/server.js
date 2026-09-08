@@ -17,6 +17,7 @@ const projectRoutes   = require("./routes/project.routes");
 const invoiceRoutes   = require("./routes/invoice.routes");
 const paymentRoutes   = require("./routes/payment.routes");
 const ledgerRoutes    = require("./routes/ledger.routes");
+const invoiceRequestRoutes = require("./routes/invoiceRequest.routes");
 const roleRoutes      = require("./routes/role.routes");
 const tenantRoutes    = require("./routes/tenant.routes");
 const profileRoutes       = require("./routes/profile.routes");
@@ -57,6 +58,7 @@ app.use("/api/:tenantId/projects",       authMiddleware, tenantMiddleware, proje
 app.use("/api/:tenantId/invoices",       authMiddleware, tenantMiddleware, invoiceRoutes);
 app.use("/api/:tenantId/payments",       authMiddleware, tenantMiddleware, paymentRoutes);
 app.use("/api/:tenantId/ledger",         authMiddleware, tenantMiddleware, ledgerRoutes);
+app.use("/api/:tenantId/invoice-requests", authMiddleware, tenantMiddleware, invoiceRequestRoutes);
 app.use("/api/:tenantId/roles",          authMiddleware, tenantMiddleware, roleRoutes);
 app.use("/api/:tenantId/profile",        authMiddleware, tenantMiddleware, profileRoutes);
 app.use("/api/:tenantId/audit",          authMiddleware, tenantMiddleware, auditlogRoutes);
