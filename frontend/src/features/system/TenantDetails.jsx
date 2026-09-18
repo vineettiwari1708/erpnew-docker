@@ -11,6 +11,7 @@ import {
   deleteTenantApi,
 } from "../../services/api/tenant.api";
 import http from "../../services/api/http";
+import { useHasPermission } from "../../store/hooks";
 
 const getTenantUsersApi    = (tenantId)             => http.get(`/system/tenants/${tenantId}/users`);
 const resetUserPasswordApi = (tenantId, userId, pw) => http.put(`/system/tenants/${tenantId}/users/${userId}/reset-password`, { newPassword: pw });
@@ -18,6 +19,10 @@ const resetUserPasswordApi = (tenantId, userId, pw) => http.put(`/system/tenants
 export default function TenantDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const canUpdate       = useHasPermission("COMPANY_UPDATE");
+  const canDelete       = useHasPermission("COMPANY_DELETE");
+  const canViewUsers    = useHasPermission("COMPANY_USERS_VIEW");
+  const canResetUserPwd = useHasPermission("COMPANY_USER_RESET_PASSWORD");
 
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,13 +51,15 @@ export default function TenantDetails() {
         if (!found) { setError("Tenant not found"); return; }
         setTenant(found);
 
-        // Load users for this tenant
-        setUsersLoading(true);
-        try {
-          const ur = await getTenantUsersApi(id);
-          setUsers(ur.data || []);
-        } catch { /* non-fatal */ }
-        finally { setUsersLoading(false); }
+        // Load users for this tenant (only if permitted)
+        if (canViewUsers) {
+          setUsersLoading(true);
+          try {
+            const ur = await getTenantUsersApi(id);
+            setUsers(ur.data || []);
+          } catch { /* non-fatal */ }
+          finally { setUsersLoading(false); }
+        }
       } catch (err) {
         setError(err?.message || "Failed to load tenant");
       } finally {
@@ -324,10 +331,10 @@ export default function TenantDetails() {
             {/* iOS-style toggle switch */}
             <button
               onClick={toggleStatus}
-              disabled={toggling}
+              disabled={toggling || !canUpdate}
               role="switch"
               aria-checked={isActive}
-              title={isActive ? "Click to deactivate" : "Click to activate"}
+              title={canUpdate ? (isActive ? "Click to deactivate" : "Click to activate") : "You don't have permission to change this"}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
                 isActive ? "bg-green-500" : "bg-slate-300"
               }`}
@@ -342,13 +349,15 @@ export default function TenantDetails() {
 
           {/* QUICK ACTION BUTTONS */}
           <div className="grid grid-cols-2 gap-3">
-            <Link
-              to={`/system/edit-company/${tenant.id}`}
-              className={actionBtn}
-            >
-              <Edit className="text-indigo-600" />
-              <span className="mt-1 text-xs">Edit</span>
-            </Link>
+            {canUpdate && (
+              <Link
+                to={`/system/edit-company/${tenant.id}`}
+                className={actionBtn}
+              >
+                <Edit className="text-indigo-600" />
+                <span className="mt-1 text-xs">Edit</span>
+              </Link>
+            )}
 
             <Link
               to={`/system/company-invoices/${tenant.id}`}
@@ -360,18 +369,20 @@ export default function TenantDetails() {
           </div>
 
           {/* DANGER ZONE */}
-          <div className="mt-4 border-t pt-4">
-            <button
-              onClick={() => {
-                setActionError("");
-                setShowDeleteConfirm(true);
-              }}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-3 text-sm font-medium text-red-600 hover:bg-red-100"
-            >
-              <Trash2 size={16} />
-              Delete Company
-            </button>
-          </div>
+          {canDelete && (
+            <div className="mt-4 border-t pt-4">
+              <button
+                onClick={() => {
+                  setActionError("");
+                  setShowDeleteConfirm(true);
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 py-3 text-sm font-medium text-red-600 hover:bg-red-100"
+              >
+                <Trash2 size={16} />
+                Delete Company
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -400,6 +411,7 @@ export default function TenantDetails() {
       </div>
 
       {/* COMPANY USERS */}
+      {canViewUsers && (
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users size={16} className="text-indigo-500" />
@@ -431,19 +443,22 @@ export default function TenantDetails() {
                       {u.role?.name || "—"}
                     </span>
                   </div>
-                  <button
-                    onClick={() => openResetModal(u)}
-                    className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 transition"
-                  >
-                    <KeyRound size={12} />
-                    Reset Password
-                  </button>
+                  {canResetUserPwd && (
+                    <button
+                      onClick={() => openResetModal(u)}
+                      className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 transition"
+                    >
+                      <KeyRound size={12} />
+                      Reset Password
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      )}
 
       {/* RESET PASSWORD MODAL */}
       {resetTarget && (

@@ -33,6 +33,7 @@ import CreateCompany from "../features/system/CreateCompany";
 import TenantDetails from "../features/system/TenantDetails";
 import SuperAdminProfile from "../features/system/SuperAdminProfile";
 import SystemSettings from "../features/system/SystemSettings";
+import Managers from "../features/system/Managers";
 import Roles from "../features/Roles/Roles";
 import RolePermissions from "../features/Roles/RolePermissions";
 import Ledger from "../features/ledger/ledger";
@@ -69,13 +70,35 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <SystemDashboard /> },
       { path: "dashboard", element: <SystemDashboard /> },
-      { path: "tenants", element: <Tenants /> },
-      { path: "tenants/:id", element: <TenantDetails /> },
-      { path: "edit-company/:id", element: <CreateCompany /> },
-      { path: "create-company", element: <CreateCompany /> },
-      { path: "company-invoices/:id", element: <CompanyInvoices /> },
+      {
+        path: "tenants",
+        element: <ProtectedRoute permission="COMPANY_VIEW"><Tenants /></ProtectedRoute>,
+      },
+      {
+        path: "tenants/:id",
+        element: <ProtectedRoute permission="COMPANY_VIEW"><TenantDetails /></ProtectedRoute>,
+      },
+      {
+        path: "edit-company/:id",
+        element: <ProtectedRoute permission="COMPANY_UPDATE"><CreateCompany /></ProtectedRoute>,
+      },
+      {
+        path: "create-company",
+        element: <ProtectedRoute permission="COMPANY_CREATE"><CreateCompany /></ProtectedRoute>,
+      },
+      {
+        path: "company-invoices/:id",
+        element: <ProtectedRoute permission="COMPANY_VIEW"><CompanyInvoices /></ProtectedRoute>,
+      },
       { path: "profile", element: <SuperAdminProfile /> },
-      { path: "settings", element: <SystemSettings /> },
+      {
+        path: "settings",
+        element: <ProtectedRoute permission="SETTINGS_VIEW"><SystemSettings /></ProtectedRoute>,
+      },
+      {
+        path: "managers",
+        element: <ProtectedRoute superAdminExclusive={true}><Managers /></ProtectedRoute>,
+      },
     ],
   },
 

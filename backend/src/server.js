@@ -20,6 +20,7 @@ const ledgerRoutes    = require("./routes/ledger.routes");
 const invoiceRequestRoutes = require("./routes/invoiceRequest.routes");
 const roleRoutes      = require("./routes/role.routes");
 const tenantRoutes    = require("./routes/tenant.routes");
+const managerRoutes   = require("./routes/manager.routes");
 const profileRoutes       = require("./routes/profile.routes");
 const auditlogRoutes      = require("./routes/auditlog.routes");
 const notificationRoutes  = require("./routes/notification.routes");
@@ -49,6 +50,7 @@ app.get("/health", (req, res) => res.json({ status: "Vineet, Health is OK!" }));
    because Express matches /api/system/profile against /:tenantId/profile
    (tenantId = "system") if the static /api/system prefix is registered later ── */
 app.use("/api/system/tenants",      authMiddleware, tenantRoutes);
+app.use("/api/system/managers",     authMiddleware, managerRoutes);
 app.use("/api/system",              authMiddleware, systemRoutes);
 
 app.use("/api/:tenantId/dashboard",      authMiddleware, tenantMiddleware, dashboardRoutes);

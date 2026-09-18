@@ -33,15 +33,19 @@ router.post("/login", loginLimiter, async (req, res) => {
       if (!valid)
         return res.status(401).json({ message: "Invalid email or password" });
 
+      // True Super Admin gets full access ("*"); a Manager's access is exactly
+      // the permission keys granted on their SystemUser row — never more.
+      const permissions = systemUser.isSuperAdmin ? ["*"] : (systemUser.permissions || []);
+
       const token = jwt.sign(
-        { id: systemUser.id, tenantId: null, role: "super_admin", clientId: null, permissions: ["*"] },
+        { id: systemUser.id, tenantId: null, role: "super_admin", clientId: null, isSuperAdmin: systemUser.isSuperAdmin, permissions },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES }
       );
 
       const { passwordHash, ...safeSystemUser } = systemUser;
       return res.json({
-        user: { ...safeSystemUser, role: "super_admin", tenantId: null, permissions: ["*"] },
+        user: { ...safeSystemUser, role: "super_admin", tenantId: null, permissions },
         token,
       });
     }

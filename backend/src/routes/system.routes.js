@@ -4,6 +4,7 @@ const { spawn }  = require("child_process");
 const fs         = require("fs");
 const path       = require("path");
 const prisma     = require("../config/db");
+const { requireSystemPermission } = require("../middleware/systemPermission.middleware");
 
 const BACKUP_DIR = "/app/backups";
 const router = express.Router();
@@ -11,6 +12,9 @@ const router = express.Router();
 // Ensure backup directory exists
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
+// Any logged-in system-level account (true Super Admin or a Manager) — used for
+// routes every system login should reach regardless of granted permissions (their own
+// notifications/profile).
 function superAdminOnly(req, res, next) {
   if (req.user?.role !== "super_admin")
     return res.status(403).json({ message: "Super admin access required" });
@@ -119,7 +123,7 @@ router.put("/profile", superAdminOnly, async (req, res) => {
 });
 
 /* ── GET /api/system/settings ── */
-router.get("/settings", superAdminOnly, async (req, res) => {
+router.get("/settings", requireSystemPermission("SETTINGS_VIEW"), async (req, res) => {
   try {
     const [tenantCount, userCount, totalInvoices, totalPayments] = await Promise.all([
       prisma.tenant.count({ where: { isDeleted: false } }),
@@ -160,7 +164,7 @@ router.get("/settings", superAdminOnly, async (req, res) => {
 });
 
 /* ── POST /api/system/backup — run pg_dump and save file ── */
-router.post("/backup", superAdminOnly, async (req, res) => {
+router.post("/backup", requireSystemPermission("BACKUP_CREATE"), async (req, res) => {
   try {
     const dbUrl  = new URL(process.env.DATABASE_URL);
     const host   = dbUrl.hostname;
@@ -191,7 +195,7 @@ router.post("/backup", superAdminOnly, async (req, res) => {
 });
 
 /* ── GET /api/system/backups — list backup files ── */
-router.get("/backups", superAdminOnly, (req, res) => {
+router.get("/backups", requireSystemPermission("BACKUP_VIEW"), (req, res) => {
   try {
     if (!fs.existsSync(BACKUP_DIR)) return res.json([]);
     const files = fs.readdirSync(BACKUP_DIR)
@@ -208,7 +212,7 @@ router.get("/backups", superAdminOnly, (req, res) => {
 });
 
 /* ── GET /api/system/backup/:filename — download a backup file ── */
-router.get("/backup/:filename", superAdminOnly, (req, res) => {
+router.get("/backup/:filename", requireSystemPermission("BACKUP_VIEW"), (req, res) => {
   const filename = path.basename(req.params.filename); // prevent path traversal
   const filepath = path.join(BACKUP_DIR, filename);
   if (!fs.existsSync(filepath))
@@ -219,7 +223,7 @@ router.get("/backup/:filename", superAdminOnly, (req, res) => {
 });
 
 /* ── DELETE /api/system/backup/:filename — delete a backup file ── */
-router.delete("/backup/:filename", superAdminOnly, (req, res) => {
+router.delete("/backup/:filename", requireSystemPermission("BACKUP_DELETE"), (req, res) => {
   const filename = path.basename(req.params.filename);
   const filepath = path.join(BACKUP_DIR, filename);
   if (!fs.existsSync(filepath))

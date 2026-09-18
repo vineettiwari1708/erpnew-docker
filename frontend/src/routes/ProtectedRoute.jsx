@@ -16,7 +16,7 @@ const CLIENT_ALLOWED_PATHS = [
 const isClientAllowed = (pathname) =>
   CLIENT_ALLOWED_PATHS.some((allowed) => pathname.includes(allowed));
 
-export default function ProtectedRoute({ children, systemOnly = false, permission }) {
+export default function ProtectedRoute({ children, systemOnly = false, superAdminExclusive = false, permission }) {
   const { user, isAuthenticated } = useSelector((state) => state.auth);
   const allowed = useHasPermission(permission);
   const location = useLocation();
@@ -27,6 +27,10 @@ export default function ProtectedRoute({ children, systemOnly = false, permissio
   const isClient     = user?.role === "CLIENT";
 
   if (systemOnly && !isSuperAdmin) return <Navigate to="/unauthorized" replace />;
+
+  // Reserved for the true Super Admin only — never satisfiable by any granted
+  // permission. Used for managing Manager accounts themselves.
+  if (superAdminExclusive && user?.isSuperAdmin !== true) return <Navigate to="/unauthorized" replace />;
 
   // CLIENT users are hard-blocked from any page not in their allowed list
   if (isClient && permission && !isClientAllowed(location.pathname)) {

@@ -41,8 +41,9 @@ const clientMenu = [
 
 export const superAdminMenu = [
   { name: "Dashboard",       path: "/system/dashboard",      icon: LayoutDashboard },
-  { name: "Companies",       path: "/system/tenants",        icon: Building2 },
-  { name: "Create Company",  path: "/system/create-company", icon: FolderKanban },
+  { name: "Companies",       path: "/system/tenants",        icon: Building2,     perm: "COMPANY_VIEW" },
+  { name: "Create Company",  path: "/system/create-company", icon: FolderKanban,  perm: "COMPANY_CREATE" },
+  { name: "Managers",        path: "/system/managers",       icon: Users,         superAdminOnly: true },
 ];
 
 /* ── COMPONENT ── */
@@ -60,7 +61,11 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen, compact, setCompa
     rolePerms.includes("*") || rolePerms.includes(perm);
 
   const allowedMenu = isSuperAdmin
-    ? superAdminMenu
+    ? superAdminMenu.filter((item) => {
+        if (item.superAdminOnly) return user?.isSuperAdmin === true;
+        if (!item.perm) return true;
+        return hasPermission(item.perm);
+      })
     : isClientRole
     ? clientMenu.filter((item) => hasPermission(item.perm))
     : menu.filter((item) => hasPermission(item.perm));

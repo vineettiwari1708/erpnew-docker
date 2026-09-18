@@ -2,14 +2,10 @@ const express = require("express");
 const bcrypt  = require("bcrypt");
 const prisma  = require("../config/db");
 const { genTenantSlug } = require("../utils/slug");
+const { requireSystemPermission } = require("../middleware/systemPermission.middleware");
+const { assertEmailNotSystemUser } = require("../utils/emailGuard");
 
 const router = express.Router();
-
-function superAdminOnly(req, res, next) {
-  if (req.user?.role !== "super_admin")
-    return res.status(403).json({ message: "Super admin access required" });
-  next();
-}
 
 const ROLE_PERMISSIONS = {
   ADMIN: [
@@ -44,7 +40,7 @@ const ROLE_PERMISSIONS = {
 };
 
 /* ── GET all tenants ── */
-router.get("/", superAdminOnly, async (req, res) => {
+router.get("/", requireSystemPermission("COMPANY_VIEW"), async (req, res) => {
   try {
     const tenants = await prisma.tenant.findMany({
       where:   { isDeleted: false },
@@ -60,7 +56,7 @@ router.get("/", superAdminOnly, async (req, res) => {
 });
 
 /* ── GET single tenant ── */
-router.get("/:id", superAdminOnly, async (req, res) => {
+router.get("/:id", requireSystemPermission("COMPANY_VIEW"), async (req, res) => {
   try {
     const tenant = await prisma.tenant.findFirst({
       where: { id: req.params.id, isDeleted: false },
@@ -73,7 +69,7 @@ router.get("/:id", superAdminOnly, async (req, res) => {
 });
 
 /* ── POST — create tenant + roles + admin user (atomic) ── */
-router.post("/", superAdminOnly, async (req, res) => {
+router.post("/", requireSystemPermission("COMPANY_CREATE"), async (req, res) => {
   const {
     name, email, phone, website, industry, employees,
     plan, status, gstNumber, gstEnabled, gstType, gstRate,
@@ -89,6 +85,8 @@ router.post("/", superAdminOnly, async (req, res) => {
     return res.status(400).json({ message: "Admin password must be at least 6 characters" });
 
   try {
+    if (!(await assertEmailNotSystemUser(adminEmail.trim(), res))) return;
+
     // Generate slug outside the transaction (needs DB reads)
     const slug = await genTenantSlug(name.trim());
 
@@ -161,7 +159,7 @@ router.post("/", superAdminOnly, async (req, res) => {
 });
 
 /* ── PUT — update tenant info ── */
-router.put("/:id", superAdminOnly, async (req, res) => {
+router.put("/:id", requireSystemPermission("COMPANY_UPDATE"), async (req, res) => {
   const { id } = req.params;
   const {
     name, email, phone, website, industry, employees,
@@ -190,7 +188,7 @@ router.put("/:id", superAdminOnly, async (req, res) => {
 });
 
 /* ── DELETE — soft delete tenant ── */
-router.delete("/:id", superAdminOnly, async (req, res) => {
+router.delete("/:id", requireSystemPermission("COMPANY_DELETE"), async (req, res) => {
   const { id } = req.params;
   try {
     const existing = await prisma.tenant.findFirst({ where: { id, isDeleted: false } });
@@ -207,7 +205,7 @@ router.delete("/:id", superAdminOnly, async (req, res) => {
 });
 
 /* ── GET /:tenantId/users — list all users for a company ── */
-router.get("/:tenantId/users", superAdminOnly, async (req, res) => {
+router.get("/:tenantId/users", requireSystemPermission("COMPANY_USERS_VIEW"), async (req, res) => {
   const { tenantId } = req.params;
   try {
     const users = await prisma.user.findMany({
@@ -222,7 +220,7 @@ router.get("/:tenantId/users", superAdminOnly, async (req, res) => {
 });
 
 /* ── PUT /:tenantId/users/:userId/reset-password ── */
-router.put("/:tenantId/users/:userId/reset-password", superAdminOnly, async (req, res) => {
+router.put("/:tenantId/users/:userId/reset-password", requireSystemPermission("COMPANY_USER_RESET_PASSWORD"), async (req, res) => {
   const { tenantId, userId } = req.params;
   const { newPassword } = req.body;
 

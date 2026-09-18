@@ -1,4 +1,4 @@
-const express                        = require("express");
+﻿const express                        = require("express");
 const prisma                         = require("../config/db");
 const { upload, uploadToImageKit }   = require("../middleware/upload.middleware");
 const audit                          = require("../utils/audit");
@@ -8,10 +8,6 @@ const { notify }                     = require("../utils/notify");
 const router = express.Router({ mergeParams: true });
 
 const isClient = (req) => req.user?.role === "CLIENT";
-
-// SystemUser (super_admin) rows don't exist in the tenant-scoped User table,
-// so confirmedById / ledger.userId (which FK into User) must stay null for them.
-const confirmerId = (req) => (req.user?.role === "super_admin" ? null : req.user.id);
 
 router.get("/", async (req, res) => {
   const { tenantId } = req.params;
@@ -104,7 +100,6 @@ router.post("/", upload.single("proof"), async (req, res) => {
     if (paymentStatus === "SUCCESS") {
       /* Admin recording a confirmed payment — update invoice + create ledger atomically */
       const paidDate = paidAt ? new Date(paidAt) : new Date();
-      const confirmedById = confirmerId(req);
 
       const { payment } = await prisma.$transaction(async (tx) => {
         // Fetch invoice details and sum existing confirmed payments
@@ -129,7 +124,7 @@ router.post("/", upload.single("proof"), async (req, res) => {
             amount:        Number(amount),
             status:        "SUCCESS",
             method,        transactionId, proofUrl, notes,
-            confirmedById,
+            confirmedById: req.user.id,
             paidAt:        paidDate,
             confirmedAt:   paidDate,
           },
@@ -148,7 +143,7 @@ router.post("/", upload.single("proof"), async (req, res) => {
         await tx.ledger.create({
           data: {
             tenantId,
-            userId:      confirmedById,
+            userId:      req.user.id,
             invoiceId,
             paymentId:   payment.id,
             type:        "CREDIT",
@@ -202,64 +197,15 @@ router.put("/:id", upload.single("proof"), async (req, res) => {
     let proofUrl = req.body.proofUrl || undefined;
     if (req.file) proofUrl = await uploadToImageKit(req.file);
 
-    // Transitioning an existing payment to SUCCESS must have the same side effects
-    // as creating one SUCCESS from POST /: mark the invoice PAID and record the ledger entry.
-    const confirmingNow = status === "SUCCESS" && existing.status !== "SUCCESS";
-
-    let payment;
-    if (confirmingNow) {
-      const paidDate = paidAt ? new Date(paidAt) : new Date();
-      const confirmedById = confirmerId(req);
-
-      const result = await prisma.$transaction(async (tx) => {
-        const payment = await tx.payment.update({
-          where: { id },
-          data:  {
-            amount: amount ? Number(amount) : undefined,
-            method, transactionId, proofUrl, notes,
-            status:        "SUCCESS",
-            confirmedById,
-            paidAt:        paidDate,
-            confirmedAt:   paidDate,
-            updatedAt:     new Date(),
-          },
-        });
-
-        const inv = await tx.invoice.update({
-          where:  { id: existing.invoiceId },
-          data:   { status: "PAID", paidAt: paidDate, updatedAt: new Date() },
-          select: { invoiceNumber: true },
-        });
-
-        await tx.ledger.create({
-          data: {
-            tenantId,
-            userId:      confirmedById,
-            invoiceId:   existing.invoiceId,
-            paymentId:   payment.id,
-            type:        "CREDIT",
-            amount:      payment.amount,
-            source:      "INVOICE_PAYMENT",
-            description: `Payment recorded for ${inv.invoiceNumber || existing.invoiceId}`,
-            referenceId: payment.id,
-          },
-        });
-
-        return payment;
-      });
-
-      payment = result;
-    } else {
-      payment = await prisma.payment.update({
-        where: { id },
-        data:  {
-          amount: amount ? Number(amount) : undefined,
-          method, transactionId, proofUrl, notes, status,
-          paidAt: paidAt ? new Date(paidAt) : undefined,
-          updatedAt: new Date(),
-        },
-      });
-    }
+    const payment = await prisma.payment.update({
+      where: { id },
+      data:  {
+        amount: amount ? Number(amount) : undefined,
+        method, transactionId, proofUrl, notes, status,
+        paidAt: paidAt ? new Date(paidAt) : undefined,
+        updatedAt: new Date(),
+      },
+    });
 
     const inv = await prisma.invoice.findUnique({ where: { id: existing.invoiceId }, select: { invoiceNumber: true } });
     await audit(prisma, {

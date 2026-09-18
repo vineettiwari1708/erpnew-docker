@@ -4,6 +4,7 @@ const prisma           = require("../config/db");
 const audit            = require("../utils/audit");
 const { notifyTenant } = require("../utils/notify");
 const { genUserNumber } = require("../utils/refNumber");
+const { assertEmailNotSystemUser } = require("../utils/emailGuard");
 
 const router = express.Router({ mergeParams: true });
 
@@ -105,6 +106,7 @@ router.post("/", async (req, res) => {
   try {
     const exists = await prisma.user.findFirst({ where: { email, tenantId } });
     if (exists) return res.status(409).json({ message: "Email already in use" });
+    if (!(await assertEmailNotSystemUser(email, res))) return;
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userNumber   = await genUserNumber(tenantId);
@@ -137,6 +139,10 @@ router.put("/:id", async (req, res) => {
     if (roleId) {
       const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
       if (!role) return res.status(400).json({ message: "Role does not belong to this tenant" });
+    }
+
+    if (email && email !== existing.email) {
+      if (!(await assertEmailNotSystemUser(email, res))) return;
     }
 
     const updateData = { name, email, phone, department, roleId, status, avatarUrl, updatedAt: new Date() };

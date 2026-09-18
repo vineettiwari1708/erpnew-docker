@@ -4,6 +4,7 @@ const prisma           = require("../config/db");
 const audit            = require("../utils/audit");
 const { notifyTenant } = require("../utils/notify");
 const { genClientNumber, genUserNumber } = require("../utils/refNumber");
+const { assertEmailNotSystemUser } = require("../utils/emailGuard");
 
 const router = express.Router({ mergeParams: true });
 
@@ -203,6 +204,7 @@ router.post("/:id/portal-user", async (req, res) => {
 
     const emailInUse = await prisma.user.findFirst({ where: { email, tenantId } });
     if (emailInUse) return res.status(409).json({ message: "Email already in use by another account" });
+    if (!(await assertEmailNotSystemUser(email, res))) return;
 
     const clientRole = await prisma.role.findFirst({ where: { tenantId, name: "CLIENT" } });
     if (!clientRole) return res.status(400).json({ message: "CLIENT role not found" });

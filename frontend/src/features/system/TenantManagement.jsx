@@ -3,8 +3,10 @@
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getTenantsApi, updateTenantApi } from "../../services/api/tenant.api";
+import { useHasPermission } from "../../store/hooks";
 
 export default function Tenants() {
+  const canUpdate = useHasPermission("COMPANY_UPDATE");
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(null);
@@ -117,17 +119,19 @@ export default function Tenants() {
 
                     {/* RIGHT */}
                     <div className="flex justify-end">
-                      <button
-                        onClick={() => toggleStatus(t.id, t.status)}
-                        disabled={toggling === t.id}
-                        className={`w-24 h-9 flex items-center justify-center rounded-lg text-xs font-medium text-white transition disabled:opacity-60 ${
-                          isActive
-                            ? "bg-red-500 hover:bg-red-600"
-                            : "bg-green-600 hover:bg-green-700"
-                        }`}
-                      >
-                        {toggling === t.id ? "Saving…" : isActive ? "Disable" : "Enable"}
-                      </button>
+                      {canUpdate && (
+                        <button
+                          onClick={() => toggleStatus(t.id, t.status)}
+                          disabled={toggling === t.id}
+                          className={`w-24 h-9 flex items-center justify-center rounded-lg text-xs font-medium text-white transition disabled:opacity-60 ${
+                            isActive
+                              ? "bg-red-500 hover:bg-red-600"
+                              : "bg-green-600 hover:bg-green-700"
+                          }`}
+                        >
+                          {toggling === t.id ? "Saving…" : isActive ? "Disable" : "Enable"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
